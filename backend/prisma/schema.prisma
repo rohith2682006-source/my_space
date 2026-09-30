@@ -1,0 +1,587 @@
+// ─────────────────────────────────────────────────────────────
+// Spaces — Database Schema
+// Optimized for zero-dependency local dev (SQLite) & seamlessly swappable to PostgreSQL
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User & Auth ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  avatarUrl     String?   @map("avatar_url")
+  isVerified    Boolean   @default(false) @map("is_verified")
+  isAdmin       Boolean   @default(false) @map("is_admin")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  spaces               Space[]
+  spaceMemberships     SpaceMember[]
+  files                File[]
+  activities           Activity[]
+  notifications        Notification[]
+  refreshTokens        RefreshToken[]
+  shareLinks           ShareLink[]
+  favorites            Favorite[]
+  storageUsage         StorageUsage?
+  devices              Device[]
+  subscriptions        Subscription[]
+  payments             Payment[]
+  aiUsage              AiUsage[]
+  aiCreditTransactions AiCreditTransaction[]
+  aiCreditBalance      AiCreditBalance?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  deviceId  String?   @map("device_id")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  deviceName   String   @map("device_name")
+  deviceType   String   @map("device_type") // mobile, desktop, web
+  platform     String?  // android, ios, windows, macos, web
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// ─── Plans & Subscriptions ───────────────────────────────────
+
+model Plan {
+  id                   String   @id @default(uuid())
+  name                 String   @unique // free, plus, pro, family, teams
+  displayName          String   @map("display_name")
+  description          String?
+  storageLimitBytes    BigInt   @map("storage_limit_bytes")
+  maxFileSize          BigInt   @map("max_file_size") // in bytes
+  maxSpaces            Int      @map("max_spaces")
+  features             String   @default("{}") // JSON string for SQLite portability
+  priceMonthly         Float?   @map("price_monthly")
+  priceYearly          Float?   @map("price_yearly")
+  isActive             Boolean  @default(true) @map("is_active")
+  // ── AI Limits ──────────────────────────────────────────
+  aiCreditsMonthly     Int      @default(0)  @map("ai_credits_monthly")    // total credits per billing period
+  quickSearchLimit     Int      @default(0)  @map("quick_search_limit")    // 0 = unlimited
+  deepSearchLimit      Int      @default(0)  @map("deep_search_limit")     // 0 = unlimited
+  aiEnabledFileLimit   Int      @default(0)  @map("ai_enabled_file_limit") // max files with AI enabled; 0 = unlimited
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                            String    @id @default(uuid())
+  userId                        String    @map("user_id")
+  planId                        String    @map("plan_id")
+  status                        String    @default("ACTIVE") // ACTIVE, CANCELLED, PAST_DUE, EXPIRED, TRIALING
+  billingPeriod                 String    @default("MONTHLY") @map("billing_period") // MONTHLY, YEARLY
+  currentPeriodStart            DateTime  @map("current_period_start")
+  currentPeriodEnd              DateTime  @map("current_period_end")
+  cancelledAt                   DateTime? @map("cancelled_at")
+  paymentProviderId             String?   @map("payment_provider_id")       // Razorpay subscription ID
+  razorpaySubscriptionId        String?   @map("razorpay_subscription_id")
+  razorpayOrderId               String?   @map("razorpay_order_id")
+  razorpayPaymentId             String?   @map("razorpay_payment_id")
+  trialEndsAt                   DateTime? @map("trial_ends_at")
+  createdAt                     DateTime  @default(now()) @map("created_at")
+  updatedAt                     DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([userId])
+  @@index([razorpaySubscriptionId])
+  @@map("subscriptions")
+}
+
+// ─── Spaces ──────────────────────────────────────────────────
+
+model Space {
+  id             String    @id @default(uuid())
+  name           String
+  description    String?
+  icon           String    @default("📁")
+  color          String    @default("#6366F1") // Indigo
+  coverUrl       String?   @map("cover_url")
+  ownerId        String    @map("owner_id")
+  isPrivate      Boolean   @default(true) @map("is_private")
+  fileCount      Int       @default(0) @map("file_count")
+  totalSize      BigInt    @default(0) @map("total_size") // bytes
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  // Relations
+  owner      User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members    SpaceMember[]
+  files      File[]
+  activities Activity[]
+  shareLinks ShareLink[]
+
+  @@index([ownerId])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("spaces")
+}
+
+model SpaceMember {
+  id        String    @id @default(uuid())
+  spaceId   String    @map("space_id")
+  userId    String    @map("user_id")
+  role      String    @default("VIEWER") // VIEWER, EDITOR, ADMIN, OWNER
+  invitedAt DateTime  @default(now()) @map("invited_at")
+  joinedAt  DateTime? @map("joined_at")
+  status    String    @default("PENDING") // PENDING, ACCEPTED, DECLINED
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@index([userId])
+  @@map("space_members")
+}
+
+// ─── Files ───────────────────────────────────────────────────
+
+model File {
+  id           String    @id @default(uuid())
+  name         String
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  extension    String
+  size         BigInt    // bytes
+  storageKey   String    @unique @map("storage_key") // path or key in storage
+  thumbnailKey String?   @map("thumbnail_key")
+  checksum     String?   // SHA-256 hash for duplicate detection
+  spaceId      String    @map("space_id")
+  uploadedBy   String    @map("uploaded_by")
+  parentId     String?   @map("parent_id") // for folder structure if nested
+  category     String    @default("OTHER") // DOCUMENT, IMAGE, VIDEO, AUDIO, ARCHIVE, CODE, NOTE, LINK, OTHER
+  isStarred    Boolean   @default(false) @map("is_starred")
+  content      String?   // For Notes or Link URLs
+  openedAt     DateTime? @map("opened_at")
+  aiSearchEnabled Boolean @default(false) @map("ai_search_enabled")
+  indexStatus  String    @default("NOT_INDEXED") @map("index_status")
+  indexError   String?   @map("index_error")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+  trashedAt    DateTime? @map("trashed_at")
+
+  // Relations
+  space       Space            @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  uploader    User             @relation(fields: [uploadedBy], references: [id])
+  parent      File?            @relation("FileHierarchy", fields: [parentId], references: [id])
+  children    File[]           @relation("FileHierarchy")
+  versions    FileVersion[]
+  tags        FileTag[]
+  shareLinks  ShareLink[]
+  permissions FilePermission[]
+  favorites   Favorite[]
+  chunks      FileChunk[]
+
+  @@index([spaceId])
+  @@index([uploadedBy])
+  @@index([name])
+  @@index([mimeType])
+  @@index([category])
+  @@index([deletedAt])
+  @@index([aiSearchEnabled])
+  @@index([trashedAt])
+  @@index([checksum])
+  @@map("files")
+}
+
+model FileChunk {
+  id         String   @id @default(uuid())
+  fileId     String   @map("file_id")
+  spaceId    String   @map("space_id")
+  ownerId    String   @map("owner_id")
+  content    String
+  embedding  String
+  metadata   String   @default("{}")
+  pageNumber Int?     @map("page_number")
+  chunkIndex Int      @map("chunk_index")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, chunkIndex])
+  @@index([fileId])
+  @@index([spaceId, ownerId])
+  @@map("file_chunks")
+}
+
+model FileVersion {
+  id         String   @id @default(uuid())
+  fileId     String   @map("file_id")
+  versionNum Int      @map("version_num")
+  storageKey String   @map("storage_key")
+  size       BigInt
+  checksum   String?
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, versionNum])
+  @@index([fileId])
+  @@map("file_versions")
+}
+
+// ─── Tags ────────────────────────────────────────────────────
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String   @default("#6366F1")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  files FileTag[]
+
+  @@map("tags")
+}
+
+model FileTag {
+  fileId String @map("file_id")
+  tagId  String @map("tag_id")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([fileId, tagId])
+  @@map("file_tags")
+}
+
+// ─── Sharing ─────────────────────────────────────────────────
+
+model ShareLink {
+  id            String    @id @default(uuid())
+  token         String    @unique @default(uuid()) // secure random token
+  fileId        String?   @map("file_id")
+  spaceId       String?   @map("space_id")
+  createdBy     String    @map("created_by")
+  permission    String    @default("VIEW") // VIEW, EDIT, DOWNLOAD
+  password      String?   // hashed password
+  expiresAt     DateTime? @map("expires_at")
+  maxDownloads  Int?      @map("max_downloads")
+  downloadCount Int       @default(0) @map("download_count")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  file    File?  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  space   Space? @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [createdBy], references: [id])
+
+  @@index([token])
+  @@index([fileId])
+  @@index([spaceId])
+  @@map("share_links")
+}
+
+model FilePermission {
+  id         String   @id @default(uuid())
+  fileId     String   @map("file_id")
+  userId     String   @map("user_id")
+  permission String   @default("VIEW") // VIEW, EDIT, DOWNLOAD
+  grantedAt  DateTime @default(now()) @map("granted_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, userId])
+  @@map("file_permissions")
+}
+
+// ─── Favorites ───────────────────────────────────────────────
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  fileId    String   @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+// ─── Activity & Notifications ────────────────────────────────
+
+model Activity {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  spaceId    String?  @map("space_id")
+  action     String   // FILE_UPLOADED, FILE_DELETED, SPACE_CREATED, etc.
+  targetType String?  @map("target_type") // file, space, member
+  targetId   String?  @map("target_id")
+  metadata   String?  // JSON string
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space Space? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([spaceId])
+  @@map("activities")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // UPLOAD_COMPLETE, SPACE_INVITATION, etc.
+  title     String
+  message   String
+  data      String?  // JSON string
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// ─── Storage Tracking ────────────────────────────────────────
+
+model StorageUsage {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("user_id")
+  totalUsed     BigInt   @default(0) @map("total_used") // bytes
+  documentsSize BigInt   @default(0) @map("documents_size")
+  imagesSize    BigInt   @default(0) @map("images_size")
+  videosSize    BigInt   @default(0) @map("videos_size")
+  audioSize     BigInt   @default(0) @map("audio_size")
+  archivesSize  BigInt   @default(0) @map("archives_size")
+  otherSize     BigInt   @default(0) @map("other_size")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("storage_usage")
+}
+
+// ─── Payments ────────────────────────────────────────────────
+
+model Payment {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  subscriptionId         String?   @map("subscription_id")
+  razorpayOrderId        String?   @unique @map("razorpay_order_id")
+  razorpayPaymentId      String?   @unique @map("razorpay_payment_id")
+  razorpaySignature      String?   @map("razorpay_signature")
+  amountPaise            Int       @map("amount_paise")          // amount in smallest currency unit (paise)
+  currency               String    @default("INR")
+  status                 String    @default("PENDING")           // PENDING, CAPTURED, FAILED, REFUNDED
+  method                 String?                                  // card, upi, netbanking, etc.
+  description            String?
+  notes                  String    @default("{}")                // JSON metadata
+  refundId               String?   @map("refund_id")
+  refundAmountPaise      Int?      @map("refund_amount_paise")
+  refundedAt             DateTime? @map("refunded_at")
+  verifiedAt             DateTime? @map("verified_at")            // set after signature verification
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([userId])
+  @@index([razorpayOrderId])
+  @@index([razorpayPaymentId])
+  @@index([status])
+  @@map("payments")
+}
+
+model WebhookEvent {
+  id           String    @id @default(uuid())
+  provider     String    @default("razorpay")
+  eventId      String    @unique @map("event_id")    // provider event ID — idempotency key
+  eventType    String    @map("event_type")
+  payload      String                                  // raw JSON body
+  processedAt  DateTime? @map("processed_at")
+  error        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@index([eventType])
+  @@map("webhook_events")
+}
+
+// ─── AI Usage & Credits ──────────────────────────────────────
+
+/// Per-request AI usage log. Written for every AI call.
+model AiUsage {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  requestId            String   @unique @map("request_id")  // idempotency
+  requestType          String   @map("request_type")        // QUICK_SEARCH, DEEP_SEARCH, CHAT, EMBED
+  model                String
+  inputTokens          Int      @default(0) @map("input_tokens")
+  cachedInputTokens    Int      @default(0) @map("cached_input_tokens")
+  outputTokens         Int      @default(0) @map("output_tokens")
+  estimatedCostUsd     Float    @default(0) @map("estimated_cost_usd")
+  latencyMs            Int      @default(0) @map("latency_ms")
+  success              Boolean  @default(true)
+  errorCode            String?  @map("error_code")
+  metadata             String   @default("{}") // JSON: fileIds, spaceId, chunksUsed
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([requestType])
+  @@index([createdAt])
+  @@map("ai_usage")
+}
+
+/// Credit ledger — every deduction and refund is a row.
+model AiCreditTransaction {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  requestId      String?  @map("request_id")        // matches AiUsage.requestId
+  operation      String                              // DEEP_SEARCH, CHAT, REFUND, GRANT, RESET
+  creditsChange  Int      @map("credits_change")    // negative = spend, positive = grant/refund
+  creditsBefore  Int      @map("credits_before")
+  creditsAfter   Int      @map("credits_after")
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([requestId])
+  @@index([createdAt])
+  @@map("ai_credit_transactions")
+}
+
+/// Current credit balance snapshot per user (denormalized for fast reads).
+model AiCreditBalance {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  balance        Int      @default(0)
+  totalUsed      Int      @default(0) @map("total_used")
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_credit_balances")
+}
+
+// ─── Background Jobs ─────────────────────────────────────────
+
+model Job {
+  id          String    @id @default(uuid())
+  type        String                             // DOCUMENT_INDEX, DOCUMENT_CLEANUP, EMBED_DELETE
+  status      String    @default("QUEUED")      // QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED
+  payload     String    @default("{}")          // JSON
+  result      String?                           // JSON result
+  error       String?
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3) @map("max_attempts")
+  scheduledAt DateTime  @default(now()) @map("scheduled_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([type, status])
+  @@index([scheduledAt])
+  @@map("jobs")
+}
+
+// ─── Audit Logs ──────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String                           // LOGIN, FILE_UPLOAD, AI_ENABLED, AI_DISABLED, etc.
+  targetType String?  @map("target_type")    // file, subscription, plan, payment
+  targetId   String?  @map("target_id")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  metadata   String   @default("{}") // JSON — no private content
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Admin Config ────────────────────────────────────────────
+
+/// Admin-configurable operating cost entries for business analytics.
+model OperatingCost {
+  id          String   @id @default(uuid())
+  category    String                       // STORAGE, SERVER, DATABASE, BANDWIDTH, EMAIL, PAYMENT_GATEWAY, OTHER
+  label       String
+  amountUsd   Float    @map("amount_usd") // monthly cost in USD
+  notes       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  effectiveFrom DateTime @map("effective_from")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@map("operating_costs")
+}
+
+/// AI model pricing — used to estimate cost per request.
+model ModelPricing {
+  id                          String   @id @default(uuid())
+  model                       String
+  inputPricePerMillion        Float    @map("input_price_per_million")
+  cachedInputPricePerMillion  Float    @default(0) @map("cached_input_price_per_million")
+  outputPricePerMillion       Float    @map("output_price_per_million")
+  effectiveFrom               DateTime @map("effective_from")
+  isActive                    Boolean  @default(true) @map("is_active")
+  createdAt                   DateTime @default(now()) @map("created_at")
+
+  @@index([model, isActive])
+  @@map("model_pricing")
+}
