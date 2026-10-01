@@ -6,7 +6,16 @@ from pathlib import PurePath
 from time import perf_counter
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from openai import APIError, AsyncOpenAI, AuthenticationError, RateLimitError
 
 from schemas import (
@@ -38,78 +47,112 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("spaces.ai")
 
 app = FastAPI(title="Spaces AI Service", version="2.0.0")
+
+# ---------------------------------------------------------------------------
+# Provider configuration
+# ---------------------------------------------------------------------------
+
 openai_api_key = os.environ.get("OPENAI_API_KEY")
+gemini_api_key = os.environ.get("GEMINI_API_KEY")
 service_token = os.environ.get("AI_SERVICE_TOKEN", "")
+
+# OpenAI is still used for embeddings/document indexing for now.
 client = (
-    AsyncOpenAI(api_key=openai_api_key, timeout=OPENAI_TIMEOUT_SECONDS)
+    AsyncOpenAI(
+        api_key=openai_api_key,
+        timeout=OPENAI_TIMEOUT_SECONDS,
+    )
     if openai_api_key
     else None
 )
+
 embedding_service = EmbeddingService(client) if client else None
-llm_service = LLMService(client) if client else None
-ingestion_service = DocumentIngestionService(embedding_service) if embedding_service else None
+
+# Gemini is used for chat/RAG answers.
+llm_service = LLMService() if gemini_api_key else None
+
+ingestion_service = (
+    DocumentIngestionService(embedding_service)
+    if embedding_service
+    else None
+)
+
 context_builder = RAGContextBuilder(MAX_CONTEXT_TOKENS)
 reranker = Reranker()
 
 
-_NO_CREDIT_CODES = frozenset({
-    "credit_balance_exhausted",
-    "insufficient_quota",
-    "billing_not_active",
-})
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
 
-
-def _raise_openai_rate_error(error: RateLimitError) -> None:
-    """Convert an OpenAI RateLimitError to the correct HTTP status code.
-
-    - 402 Payment Required: account has no credits / billing not set up.
-    - 429 Too Many Requests: genuine per-minute or per-day rate limit.
-    """
-    body = getattr(error, "body", None) or {}
-    code = body.get("code") if isinstance(body, dict) else None
-    logger.warning("OpenAI rate/quota error code=%s", code)
-
-    if code in _NO_CREDIT_CODES:
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                "Your OpenAI account has no credits remaining. "
-                "Please add billing at https://platform.openai.com/settings/organization/billing/"
-            ),
-        )
-    raise HTTPException(
-        status_code=429,
-        detail="AI provider rate limit reached. Please try again in a moment.",
-    )
-
-
-async def verify_service_token(authorization: str | None = Header(default=None)) -> None:
+async def verify_service_token(
+    authorization: str | None = Header(default=None),
+) -> None:
     if not service_token or not authorization:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     scheme, _, supplied_token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not secrets.compare_digest(supplied_token, service_token):
+
+    if (
+        scheme.lower() != "bearer"
+        or not secrets.compare_digest(supplied_token, service_token)
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def _require_ai_services() -> tuple[EmbeddingService, LLMService, DocumentIngestionService]:
-    if client is None or embedding_service is None or llm_service is None or ingestion_service is None:
-        raise HTTPException(status_code=503, detail="AI service is not configured")
-    return embedding_service, llm_service, ingestion_service
+# ---------------------------------------------------------------------------
+# Service requirements
+# ---------------------------------------------------------------------------
 
+def _require_llm_service() -> LLMService:
+    if llm_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini AI service is not configured",
+        )
+
+    return llm_service
+
+
+def _require_embedding_services() -> tuple[
+    EmbeddingService,
+    DocumentIngestionService,
+]:
+    if embedding_service is None or ingestion_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Document embedding service is not configured",
+        )
+
+    return embedding_service, ingestion_service
+
+
+# ---------------------------------------------------------------------------
+# Backend callback
+# ---------------------------------------------------------------------------
 
 async def _send_index_callback(callback: IndexCallback) -> None:
     if not service_token:
-        logger.error("Document index callback skipped because the service token is not configured")
+        logger.error(
+            "Document index callback skipped because the service token "
+            "is not configured"
+        )
         return
+
     try:
-        async with httpx.AsyncClient(timeout=OPENAI_TIMEOUT_SECONDS) as http_client:
+        async with httpx.AsyncClient(
+            timeout=OPENAI_TIMEOUT_SECONDS
+        ) as http_client:
             response = await http_client.post(
                 BACKEND_CALLBACK_URL,
-                headers={"Authorization": f"Bearer {service_token}"},
+                headers={
+                    "Authorization": f"Bearer {service_token}"
+                },
                 json=callback.model_dump(),
             )
+
             response.raise_for_status()
+
     except httpx.HTTPError:
         logger.exception(
             "Document index callback failed file_id=%s status=%s",
@@ -117,6 +160,10 @@ async def _send_index_callback(callback: IndexCallback) -> None:
             callback.status,
         )
 
+
+# ---------------------------------------------------------------------------
+# Background document indexing
+# ---------------------------------------------------------------------------
 
 async def _index_in_background(
     *,
@@ -127,9 +174,16 @@ async def _index_in_background(
     file_type: str,
     content: bytes,
 ) -> None:
-    await _send_index_callback(IndexCallback(fileId=file_id, status="INDEXING"))
+    await _send_index_callback(
+        IndexCallback(
+            fileId=file_id,
+            status="INDEXING",
+        )
+    )
+
     try:
-        _, _, document_ingestion = _require_ai_services()
+        _, document_ingestion = _require_embedding_services()
+
         result = await document_ingestion.ingest(
             file_id=file_id,
             space_id=space_id,
@@ -138,6 +192,7 @@ async def _index_in_background(
             file_type=file_type,
             content=content,
         )
+
         await _send_index_callback(
             IndexCallback(
                 fileId=file_id,
@@ -146,73 +201,152 @@ async def _index_in_background(
                 chunks=result.chunks,
             )
         )
+
     except UnsupportedDocumentType:
         await _send_index_callback(
             IndexCallback(
                 fileId=file_id,
                 status="FAILED",
-                error="Unsupported document type. Supported types are PDF, TXT, and Markdown.",
+                error=(
+                    "Unsupported document type. Supported types are "
+                    "PDF, TXT, and Markdown."
+                ),
             )
         )
+
     except AuthenticationError:
-        logger.warning("Index background auth error: invalid API key")
-        await _send_index_callback(
-            IndexCallback(fileId=file_id, status="FAILED", error="OpenAI authentication failed. Invalid API credentials.")
-        )
-    except RateLimitError as error:
-        body = getattr(error, "body", None) or {}
-        code = body.get("code") if isinstance(body, dict) else None
-        msg = (
-            "OpenAI credits exhausted. Please add billing at https://platform.openai.com/settings/organization/billing/"
-            if code in _NO_CREDIT_CODES
-            else "AI provider rate limit reached. Please try again shortly."
-        )
-        logger.warning("Index background rate/quota error: code=%s", code)
-        await _send_index_callback(
-            IndexCallback(fileId=file_id, status="FAILED", error=msg)
-        )
-    except Exception:
-        logger.exception("Document indexing failed file_id=%s", file_id)
-        await _send_index_callback(
-            IndexCallback(fileId=file_id, status="FAILED", error="Document indexing failed.")
+        logger.warning(
+            "Index background auth error: invalid OpenAI API key"
         )
 
+        await _send_index_callback(
+            IndexCallback(
+                fileId=file_id,
+                status="FAILED",
+                error=(
+                    "OpenAI authentication failed. "
+                    "Invalid API credentials."
+                ),
+            )
+        )
+
+    except RateLimitError:
+        logger.warning(
+            "Index background OpenAI rate/quota error"
+        )
+
+        await _send_index_callback(
+            IndexCallback(
+                fileId=file_id,
+                status="FAILED",
+                error=(
+                    "OpenAI embedding service rate or quota limit "
+                    "was reached."
+                ),
+            )
+        )
+
+    except Exception:
+        logger.exception(
+            "Document indexing failed file_id=%s",
+            file_id,
+        )
+
+        await _send_index_callback(
+            IndexCallback(
+                fileId=file_id,
+                status="FAILED",
+                error="Document indexing failed.",
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    has_key = bool(openai_api_key)
     return {
         "status": "healthy",
-        "openai_configured": str(has_key).lower(),
+        "openai_configured": str(bool(openai_api_key)).lower(),
+        "gemini_configured": str(bool(gemini_api_key)).lower(),
     }
 
+
+# ---------------------------------------------------------------------------
+# Embeddings
+# ---------------------------------------------------------------------------
 
 @app.post(
     "/embeddings",
     response_model=EmbeddingResponse,
     dependencies=[Depends(verify_service_token)],
 )
-async def embed_query(request: EmbeddingRequest) -> EmbeddingResponse:
-    embedder, _, _ = _require_ai_services()
+async def embed_query(
+    request: EmbeddingRequest,
+) -> EmbeddingResponse:
+    embedder, _ = _require_embedding_services()
+
     started = perf_counter()
+
     try:
         vector = await embedder.embed_text(request.text)
+
     except AuthenticationError as error:
         logger.warning("OpenAI authentication error")
+
         raise HTTPException(
             status_code=401,
-            detail="OpenAI authentication failed. Please verify API key configuration.",
+            detail=(
+                "OpenAI authentication failed. "
+                "Please verify API key configuration."
+            ),
         ) from error
-    except RateLimitError as error:
-        _raise_openai_rate_error(error)
-    except APIError as error:
-        logger.warning("Query embedding failed error_type=%s", type(error).__name__)
-        raise HTTPException(status_code=502, detail="Query embedding failed") from error
-    elapsed_ms = (perf_counter() - started) * 1000
-    query_hash = hashlib.sha256(request.text.encode("utf-8")).hexdigest()[:12]
-    logger.info("query_embedding query_hash=%s latency_ms=%.1f", query_hash, elapsed_ms)
-    return EmbeddingResponse(embedding=vector)  # type: ignore[return-value]
 
+    except RateLimitError as error:
+        logger.warning(
+            "OpenAI embedding rate/quota error"
+        )
+
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "OpenAI embedding rate or quota limit reached."
+            ),
+        ) from error
+
+    except APIError as error:
+        logger.warning(
+            "Query embedding failed error_type=%s",
+            type(error).__name__,
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail="Query embedding failed",
+        ) from error
+
+    elapsed_ms = (perf_counter() - started) * 1000
+
+    query_hash = hashlib.sha256(
+        request.text.encode("utf-8")
+    ).hexdigest()[:12]
+
+    logger.info(
+        "query_embedding query_hash=%s latency_ms=%.1f",
+        query_hash,
+        elapsed_ms,
+    )
+
+    return EmbeddingResponse(
+        embedding=vector
+    )
+
+
+# ---------------------------------------------------------------------------
+# Document indexing
+# ---------------------------------------------------------------------------
 
 @app.post(
     "/documents/index",
@@ -229,24 +363,66 @@ async def index_document(
     file_type: str = Form(...),
     file: UploadFile = File(...),
 ) -> IndexAccepted:
-    _require_ai_services()
+
+    _require_embedding_services()
+
     if not service_token:
-        raise HTTPException(status_code=503, detail="AI service is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured",
+        )
+
     safe_name = PurePath(file_name).name
-    if not safe_name or safe_name != file_name or len(safe_name) > 255:
-        raise HTTPException(status_code=400, detail="Invalid file name")
 
-    content = await file.read(MAX_INDEX_FILE_BYTES + 1)
+    if (
+        not safe_name
+        or safe_name != file_name
+        or len(safe_name) > 255
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file name",
+        )
+
+    content = await file.read(
+        MAX_INDEX_FILE_BYTES + 1
+    )
+
     if len(content) > MAX_INDEX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="Document exceeds the indexing size limit")
-    if not content:
-        raise HTTPException(status_code=400, detail="Document is empty")
+        raise HTTPException(
+            status_code=413,
+            detail="Document exceeds the indexing size limit",
+        )
 
-    extension = PurePath(safe_name).suffix.lower()
-    if extension not in {".pdf", ".txt", ".md", ".markdown"}:
-        raise HTTPException(status_code=415, detail="Unsupported document type")
-    if file_type.lower().lstrip(".") != extension.lstrip("."):
-        raise HTTPException(status_code=400, detail="File type does not match its name")
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail="Document is empty",
+        )
+
+    extension = PurePath(
+        safe_name
+    ).suffix.lower()
+
+    if extension not in {
+        ".pdf",
+        ".txt",
+        ".md",
+        ".markdown",
+    }:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported document type",
+        )
+
+    if (
+        file_type.lower().lstrip(".")
+        != extension.lstrip(".")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="File type does not match its name",
+        )
 
     background_tasks.add_task(
         _index_in_background,
@@ -257,49 +433,89 @@ async def index_document(
         file_type=extension.lstrip("."),
         content=content,
     )
-    return IndexAccepted(file_id=file_id, status="PROCESSING")
+
+    return IndexAccepted(
+        file_id=file_id,
+        status="PROCESSING",
+    )
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(verify_service_token)])
-async def chat(request: ChatRequest) -> ChatResponse:
-    _, llm, _ = _require_ai_services()
+# ---------------------------------------------------------------------------
+# Gemini Chat
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(verify_service_token)],
+)
+async def chat(
+    request: ChatRequest,
+) -> ChatResponse:
+
+    llm = _require_llm_service()
+
     try:
         answer = await llm.answer(
             question=request.message,
             context="",
-            history=[item.model_dump() for item in request.history],
+            history=[
+                item.model_dump()
+                for item in request.history
+            ],
             system_prompt=CHAT_SYSTEM_PROMPT,
         )
-    except AuthenticationError as error:
-        logger.warning("OpenAI authentication error")
-        raise HTTPException(
-            status_code=401,
-            detail="OpenAI authentication failed. Please verify API key configuration.",
-        ) from error
-    except RateLimitError as error:
-        _raise_openai_rate_error(error)
-    except APIError as error:
-        logger.warning("Chat completion failed error_type=%s", type(error).__name__)
-        raise HTTPException(status_code=502, detail="AI provider request failed") from error
-    return ChatResponse(reply=answer)  # type: ignore[return-value]
 
+    except Exception as error:
+        logger.exception(
+            "Gemini chat request failed error_type=%s",
+            type(error).__name__,
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini AI request failed",
+        ) from error
+
+    return ChatResponse(
+        reply=answer
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gemini RAG answer
+# ---------------------------------------------------------------------------
 
 @app.post(
     "/rag/answer",
     response_model=DeepSearchResponse,
     dependencies=[Depends(verify_service_token)],
 )
-async def answer_from_sources(request: DeepSearchRequest) -> DeepSearchResponse:
-    _, llm, _ = _require_ai_services()
+async def answer_from_sources(
+    request: DeepSearchRequest,
+) -> DeepSearchResponse:
+
+    llm = _require_llm_service()
+
     sources = reranker.rerank(
-        [item.model_dump() for item in request.sources],
+        [
+            item.model_dump()
+            for item in request.sources
+        ],
         request.message,
         TOP_K,
     )
-    built_context = context_builder.build(sources)
+
+    built_context = context_builder.build(
+        sources
+    )
+
     if not built_context.sources:
         return DeepSearchResponse(
-            answer="I couldn't find enough relevant information in your accessible documents to answer this question.",
+            answer=(
+                "I couldn't find enough relevant information "
+                "in your accessible documents to answer this question."
+            ),
             citations=[],
             search_metadata={
                 "chunks_retrieved": len(sources),
@@ -309,33 +525,58 @@ async def answer_from_sources(request: DeepSearchRequest) -> DeepSearchResponse:
         )
 
     started = perf_counter()
+
     try:
         answer = await llm.answer(
             question=request.message,
             context=built_context.text,
-            history=[item.model_dump() for item in request.history],
+            history=[
+                item.model_dump()
+                for item in request.history
+            ],
         )
-    except AuthenticationError as error:
-        logger.warning("OpenAI authentication error")
-        raise HTTPException(
-            status_code=401,
-            detail="OpenAI authentication failed. Please verify API key configuration.",
-        ) from error
-    except RateLimitError as error:
-        _raise_openai_rate_error(error)
-    except APIError as error:
-        logger.warning("RAG completion failed error_type=%s", type(error).__name__)
-        raise HTTPException(status_code=502, detail="AI provider request failed") from error
 
-    elapsed_ms = (perf_counter() - started) * 1000
-    query_hash = hashlib.sha256(request.message.encode("utf-8")).hexdigest()[:12]
+    except Exception as error:
+        logger.exception(
+            "Gemini RAG request failed error_type=%s",
+            type(error).__name__,
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini AI request failed",
+        ) from error
+
+    elapsed_ms = (
+        perf_counter() - started
+    ) * 1000
+
+    query_hash = hashlib.sha256(
+        request.message.encode("utf-8")
+    ).hexdigest()[:12]
+
     logger.info(
-        "rag_answer query_hash=%s chunks_retrieved=%s chunks_used=%s source_ids=%s scores=%s context_tokens=%s llm_latency_ms=%.1f",
+        "rag_answer query_hash=%s "
+        "chunks_retrieved=%s "
+        "chunks_used=%s "
+        "source_ids=%s "
+        "scores=%s "
+        "context_tokens=%s "
+        "llm_latency_ms=%.1f",
         query_hash,
         len(sources),
         len(built_context.sources),
-        [source["chunkId"] for source in built_context.sources],
-        [round(float(source.get("score", 0)), 4) for source in built_context.sources],
+        [
+            source["chunkId"]
+            for source in built_context.sources
+        ],
+        [
+            round(
+                float(source.get("score", 0)),
+                4,
+            )
+            for source in built_context.sources
+        ],
         built_context.tokens_used,
         elapsed_ms,
     )
@@ -356,13 +597,17 @@ async def answer_from_sources(request: DeepSearchRequest) -> DeepSearchResponse:
         }
         for source in built_context.sources
     ]
+
     return DeepSearchResponse(
-        answer=answer,  # type: ignore[arg-type]
+        answer=answer,
         citations=citations,
         search_metadata={
             "chunks_retrieved": len(sources),
             "chunks_used": len(built_context.sources),
             "context_tokens": built_context.tokens_used,
-            "llm_latency_ms": round(elapsed_ms, 1),
+            "llm_latency_ms": round(
+                elapsed_ms,
+                1,
+            ),
         },
     )

@@ -1,9 +1,10 @@
 from collections.abc import Sequence
+import os
 
-from openai import AsyncOpenAI
-import tiktoken
+from google import genai
+from google.genai import types
 
-from settings import LLM_MODEL, MAX_HISTORY_TOKENS, MAX_RESPONSE_TOKENS, OPENAI_TIMEOUT_SECONDS
+from settings import LLM_MODEL, MAX_HISTORY_TOKENS, MAX_RESPONSE_TOKENS
 
 
 SYSTEM_PROMPT = """You answer questions using the supplied retrieved document excerpts.
@@ -21,20 +22,32 @@ CHAT_SYSTEM_PROMPT = (
 
 
 class LLMService:
-    def __init__(self, client: AsyncOpenAI, model: str = LLM_MODEL) -> None:
-        self._client = client
-        self._model = model
-        self._encoding = tiktoken.get_encoding("cl100k_base")
+    def __init__(self, client=None, model: str = LLM_MODEL) -> None:
+        api_key = os.environ.get("GEMINI_API_KEY")
 
-    def _bounded_history(self, history: Sequence[dict[str, str]]) -> list[dict[str, str]]:
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
+
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+
+    def _bounded_history(
+        self,
+        history: Sequence[dict[str, str]],
+    ) -> list[dict[str, str]]:
         bounded: list[dict[str, str]] = []
         tokens_used = 0
+
         for message in reversed(history):
-            message_tokens = len(self._encoding.encode(message["content"]))
+            # Simple token estimate for history limiting.
+            message_tokens = max(1, len(message["content"]) // 4)
+
             if tokens_used + message_tokens > MAX_HISTORY_TOKENS:
                 break
+
             bounded.append(message)
             tokens_used += message_tokens
+
         bounded.reverse()
         return bounded
 
@@ -45,21 +58,51 @@ class LLMService:
         history: Sequence[dict[str, str]],
         system_prompt: str = SYSTEM_PROMPT,
     ) -> str:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            *self._bounded_history(history),
-            {
-                "role": "user",
-                "content": f"Question:\n{question}\n\nRetrieved source context (untrusted document data):\n{context}",
-            },
-        ]
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
-            max_tokens=MAX_RESPONSE_TOKENS,
-            timeout=OPENAI_TIMEOUT_SECONDS,
+
+        contents = []
+
+        for message in self._bounded_history(history):
+            role = "user" if message["role"] == "user" else "model"
+
+            contents.append(
+                types.Content(
+                    role=role,
+                    parts=[
+                        types.Part(
+                            text=message["content"]
+                        )
+                    ],
+                )
+            )
+
+        user_content = (
+            f"Question:\n{question}\n\n"
+            f"Retrieved source context (untrusted document data):\n{context}"
         )
-        answer = response.choices[0].message.content
+
+        contents.append(
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part(
+                        text=user_content
+                    )
+                ],
+            )
+        )
+
+        response = await self._client.aio.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=MAX_RESPONSE_TOKENS,
+            ),
+        )
+
+        answer = response.text
+
         if not answer:
-            raise RuntimeError("LLM returned an empty response")
+            raise RuntimeError("Gemini returned an empty response")
+
         return answer
