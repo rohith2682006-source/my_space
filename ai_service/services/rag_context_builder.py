@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-import tiktoken
-
 
 @dataclass(frozen=True)
 class BuiltContext:
@@ -14,7 +12,6 @@ class BuiltContext:
 class RAGContextBuilder:
     def __init__(self, max_tokens: int) -> None:
         self._max_tokens = max_tokens
-        self._encoding = tiktoken.get_encoding("cl100k_base")
 
     def build(self, candidates: list[dict[str, Any]]) -> BuiltContext:
         selected: list[dict[str, Any]] = []
@@ -42,17 +39,24 @@ class RAGContextBuilder:
                 f"Space: {candidate.get('spaceName', 'Space')}"
                 f"{page_label}\nContent:\n"
             )
-            remaining = self._max_tokens - tokens_used - len(self._encoding.encode(header))
+            
+            # Approximate token count: 1 token ~ 4 chars
+            header_tokens = len(header) // 4
+            remaining = self._max_tokens - tokens_used - header_tokens
             if remaining <= 0:
                 break
 
-            excerpt_tokens = self._encoding.encode(excerpt)
-            excerpt = self._encoding.decode(excerpt_tokens[:remaining]).strip()
+            excerpt_tokens = len(excerpt) // 4
+            if excerpt_tokens > remaining:
+                # truncate string
+                excerpt = excerpt[:remaining * 4].strip()
+                excerpt_tokens = len(excerpt) // 4
+                
             if not excerpt:
                 break
 
             section = f"{header}{excerpt}"
-            section_tokens = len(self._encoding.encode(section))
+            section_tokens = header_tokens + excerpt_tokens
             if section_tokens > self._max_tokens - tokens_used:
                 break
 

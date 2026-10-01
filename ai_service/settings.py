@@ -23,10 +23,10 @@ LLM_MODEL = os.environ.get(
     "gemini-2.5-flash",
 )
 
-# OpenAI is still used for embeddings/indexing for now.
+# Gemini is now used for embeddings/indexing as well.
 EMBEDDING_MODEL = os.environ.get(
     "EMBEDDING_MODEL",
-    "text-embedding-3-small",
+    "gemini-embedding-2",
 )
 
 

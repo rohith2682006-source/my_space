@@ -16,7 +16,9 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from openai import APIError, AsyncOpenAI, AuthenticationError, RateLimitError
+from google import genai
+from google.genai.errors import APIError
+
 
 from schemas import (
     ChatRequest,
@@ -38,8 +40,7 @@ from settings import (
     BACKEND_CALLBACK_URL,
     MAX_CONTEXT_TOKENS,
     MAX_INDEX_FILE_BYTES,
-    OPENAI_TIMEOUT_SECONDS,
-    TOP_K,
+        TOP_K,
 )
 
 
@@ -52,17 +53,16 @@ app = FastAPI(title="Spaces AI Service", version="2.0.0")
 # Provider configuration
 # ---------------------------------------------------------------------------
 
-openai_api_key = os.environ.get("OPENAI_API_KEY")
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 service_token = os.environ.get("AI_SERVICE_TOKEN", "")
 
-# OpenAI is still used for embeddings/document indexing for now.
+# Gemini is used for embeddings/document indexing.
 client = (
-    AsyncOpenAI(
-        api_key=openai_api_key,
-        timeout=OPENAI_TIMEOUT_SECONDS,
+    genai.Client(
+        api_key=gemini_api_key,
+        http_options={"timeout": 30.0}
     )
-    if openai_api_key
+    if gemini_api_key
     else None
 )
 
@@ -141,7 +141,7 @@ async def _send_index_callback(callback: IndexCallback) -> None:
 
     try:
         async with httpx.AsyncClient(
-            timeout=OPENAI_TIMEOUT_SECONDS
+            timeout=30
         ) as http_client:
             response = await http_client.post(
                 BACKEND_CALLBACK_URL,
@@ -214,9 +214,9 @@ async def _index_in_background(
             )
         )
 
-    except AuthenticationError:
+    except APIError:
         logger.warning(
-            "Index background auth error: invalid OpenAI API key"
+            "Index background auth error: invalid Gemini API key"
         )
 
         await _send_index_callback(
@@ -224,15 +224,15 @@ async def _index_in_background(
                 fileId=file_id,
                 status="FAILED",
                 error=(
-                    "OpenAI authentication failed. "
+                    "Gemini authentication failed. "
                     "Invalid API credentials."
                 ),
             )
         )
 
-    except RateLimitError:
+    except APIError:
         logger.warning(
-            "Index background OpenAI rate/quota error"
+            "Index background Gemini rate/quota error"
         )
 
         await _send_index_callback(
@@ -240,7 +240,7 @@ async def _index_in_background(
                 fileId=file_id,
                 status="FAILED",
                 error=(
-                    "OpenAI embedding service rate or quota limit "
+                    "Gemini embedding service rate or quota limit "
                     "was reached."
                 ),
             )
@@ -269,8 +269,7 @@ async def _index_in_background(
 async def health() -> dict[str, str]:
     return {
         "status": "healthy",
-        "openai_configured": str(bool(openai_api_key)).lower(),
-        "gemini_configured": str(bool(gemini_api_key)).lower(),
+                "gemini_configured": str(bool(gemini_api_key)).lower(),
     }
 
 
@@ -293,26 +292,26 @@ async def embed_query(
     try:
         vector = await embedder.embed_text(request.text)
 
-    except AuthenticationError as error:
-        logger.warning("OpenAI authentication error")
+    except APIError as error:
+        logger.warning("Gemini authentication error")
 
         raise HTTPException(
             status_code=401,
             detail=(
-                "OpenAI authentication failed. "
+                "Gemini authentication failed. "
                 "Please verify API key configuration."
             ),
         ) from error
 
-    except RateLimitError as error:
+    except APIError as error:
         logger.warning(
-            "OpenAI embedding rate/quota error"
+            "Gemini embedding rate/quota error"
         )
 
         raise HTTPException(
             status_code=429,
             detail=(
-                "OpenAI embedding rate or quota limit reached."
+                "Gemini embedding rate or quota limit reached."
             ),
         ) from error
 

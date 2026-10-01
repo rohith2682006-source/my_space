@@ -71,40 +71,8 @@ export class AiCreditsService {
     operation: string,
     metadata?: Record<string, any>
   ): Promise<{ success: boolean; newBalance: number }> {
-    const current = await this.getBalance(userId);
-
-    if (current.balance < amount) {
-      throw new AppError(
-        `Insufficient AI credits. You need ${amount} credits, but currently have ${current.balance}. Please upgrade your plan or purchase additional credits.`,
-        402
-      );
-    }
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const balanceRecord = await tx.aiCreditBalance.update({
-        where: { userId },
-        data: {
-          balance: { decrement: amount },
-          totalUsed: { increment: amount },
-        },
-      });
-
-      await tx.aiCreditTransaction.create({
-        data: {
-          userId,
-          requestId: metadata?.requestId || crypto.randomUUID(),
-          operation,
-          creditsChange: -amount,
-          creditsBefore: current.balance,
-          creditsAfter: balanceRecord.balance,
-          description: `Used ${amount} credits for ${operation}`,
-        },
-      });
-
-      return balanceRecord;
-    });
-
-    return { success: true, newBalance: updated.balance };
+    // Free version bypass: do not deduct credits, just return success
+    return { success: true, newBalance: 99999 };
   }
 
   /**

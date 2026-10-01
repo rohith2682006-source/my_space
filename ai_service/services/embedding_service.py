@@ -1,12 +1,13 @@
 from collections.abc import Sequence
 
-from openai import AsyncOpenAI
+from google import genai
+from google.genai import types
 
-from settings import EMBEDDING_MODEL, OPENAI_TIMEOUT_SECONDS
+from settings import EMBEDDING_MODEL
 
 
 class EmbeddingService:
-    def __init__(self, client: AsyncOpenAI, model: str = EMBEDDING_MODEL) -> None:
+    def __init__(self, client: genai.Client, model: str = EMBEDDING_MODEL) -> None:
         self._client = client
         self._model = model
 
@@ -21,13 +22,17 @@ class EmbeddingService:
         vectors: list[list[float]] = []
         for offset in range(0, len(texts), 64):
             batch = texts[offset : offset + 64]
-            response = await self._client.embeddings.create(
+            contents = [
+                {"role": "user", "parts": [{"text": t}]} for t in batch
+            ]
+            
+            response = await self._client.aio.models.embed_content(
                 model=self._model,
-                input=list(batch),
-                timeout=OPENAI_TIMEOUT_SECONDS,
+                contents=contents,
+                config=types.EmbedContentConfig(output_dimensionality=1536)
             )
-            ordered = sorted(response.data, key=lambda item: item.index)
-            vectors.extend([item.embedding for item in ordered])
+            
+            vectors.extend([list(item.values) for item in response.embeddings])
 
         if len(vectors) != len(texts):
             raise RuntimeError("Embedding provider returned an incomplete batch")

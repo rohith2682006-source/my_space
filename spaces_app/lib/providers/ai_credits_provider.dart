@@ -17,7 +17,7 @@ class AiCreditsProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  int get currentCredits => _balance?.balance ?? 0;
+  int get currentCredits => 999999; // Unlimited credits for free version
 
   Future<void> fetchBalance() async {
     final response = await ApiClient.get(ApiEndpoints.aiCreditsBalance);

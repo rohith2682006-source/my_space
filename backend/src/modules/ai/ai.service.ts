@@ -115,7 +115,7 @@ export class AiService {
         throw new AppError(detail || 'AI authentication failed. Invalid API credentials.', 401, 'AI_AUTH_ERROR');
       }
       if (response.status === 402) {
-        throw new AppError(detail || 'OpenAI quota or credit balance exhausted. Please add billing credits at https://platform.openai.com/settings/organization/billing/.', 402, 'AI_QUOTA_EXHAUSTED');
+        throw new AppError(detail || 'Gemini quota or credit balance exhausted.', 402, 'AI_QUOTA_EXHAUSTED');
       }
       if (response.status === 429) {
         throw new AppError(detail || 'AI rate limit reached. Please try again shortly.', 429, 'AI_RATE_LIMITED');
