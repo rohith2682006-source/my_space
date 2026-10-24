@@ -61,7 +61,7 @@ class ApiClient {
 
       return ApiResponse(
         success: false,
-        message: 'Network error: $e',
+        message: 'Network error (${e.runtimeType}): $e',
         statusCode: 0,
       );
     }
@@ -89,7 +89,7 @@ class ApiClient {
 
       return ApiResponse(
         success: false,
-        message: 'Network error: $e',
+        message: 'Network error (${e.runtimeType}): $e',
         statusCode: 0,
       );
     }
@@ -117,7 +117,7 @@ class ApiClient {
 
       return ApiResponse(
         success: false,
-        message: 'Network error: $e',
+        message: 'Network error (${e.runtimeType}): $e',
         statusCode: 0,
       );
     }
@@ -138,7 +138,7 @@ class ApiClient {
 
       return ApiResponse(
         success: false,
-        message: 'Network error: $e',
+        message: 'Network error (${e.runtimeType}): $e',
         statusCode: 0,
       );
     }
@@ -179,7 +179,7 @@ class ApiClient {
 
       return ApiResponse(
         success: false,
-        message: 'File upload failed: $e',
+        message: 'File upload failed (${e.runtimeType}): $e',
         statusCode: 0,
       );
     }
@@ -327,8 +327,6 @@ class ApiClient {
     Object error,
     StackTrace stackTrace,
   ) {
-    // Diagnostic logging to identify the actual network exception.
-    // Avoid logging request bodies, passwords, or authentication tokens.
     print('========== API NETWORK ERROR ==========');
     print('Method: $method');
     print('URL: $url');
