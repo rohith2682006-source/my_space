@@ -1,8 +1,10 @@
 class ApiEndpoints {
-  // Override with --dart-define=API_BASE_URL=... for emulators and devices.
+  // Production backend on Render.
+  // Override using --dart-define=API_BASE_URL=... when needed.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3000/api/v1',
+    defaultValue:
+        'https://my-space-backend-wbdw.onrender.com/api/v1',
   );
 
   // Auth
@@ -20,7 +22,8 @@ class ApiEndpoints {
   static String spaceMembers(String id) => '$baseUrl/spaces/$id/members';
 
   // Files
-  static String spaceFiles(String spaceId) => '$baseUrl/files/spaces/$spaceId';
+  static String spaceFiles(String spaceId) =>
+      '$baseUrl/files/spaces/$spaceId';
   static String uploadFile(String spaceId) =>
       '$baseUrl/files/spaces/$spaceId/upload';
   static const String createNoteOrLink = '$baseUrl/files/notes-links';
@@ -78,16 +81,17 @@ class ApiEndpoints {
   static const String billingVerify = '$baseUrl/billing/verify';
   static const String billingCancel = '$baseUrl/billing/cancel';
   static const String billingCreditsBuy = '$baseUrl/billing/credits/buy';
-  static const String billingCreditsVerify = '$baseUrl/billing/credits/verify';
+  static const String billingCreditsVerify =
+      '$baseUrl/billing/credits/verify';
 
   // Admin
   static const String adminOverview = '$baseUrl/admin/overview';
   static const String adminUsers = '$baseUrl/admin/users';
   static const String adminFinancials = '$baseUrl/admin/financials';
   static const String adminOperatingCosts = '$baseUrl/admin/operating-costs';
-  static String adminDeleteOperatingCost(String id) => '$baseUrl/admin/operating-costs/$id';
+  static String adminDeleteOperatingCost(String id) =>
+      '$baseUrl/admin/operating-costs/$id';
 
   // Realtime SSE
   static const String realtimeEvents = '$baseUrl/realtime/events';
 }
-
