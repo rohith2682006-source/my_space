@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:local_auth/local_auth.dart';
 import 'dart:math' as math;
 import '../../widgets/unified_back_button.dart';
@@ -8,12 +9,81 @@ import 'package:provider/provider.dart';
 import 'package:google_sign_in_all_platforms/google_sign_in_all_platforms.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
-import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../main_navigation_screen.dart';
 import '../../../data/services/auth_storage.dart';
 import 'dart:async';
 import 'forgot_password_screen.dart';
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final center = Offset(w / 2, h / 2);
+    final radius = w / 2;
+    final strokeWidth = w * 0.22;
+
+    final rect = Rect.fromCircle(center: center, radius: radius - strokeWidth / 2);
+
+    final redPaint = Paint()
+      ..color = const Color(0xFFEA4335)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    final yellowPaint = Paint()
+      ..color = const Color(0xFFFBBC05)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    final greenPaint = Paint()
+      ..color = const Color(0xFF34A853)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    final bluePaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    // Red arc: top-left to top-right
+    canvas.drawArc(rect, -math.pi * 0.75, math.pi * 0.5, false, redPaint);
+    // Blue arc: right side
+    canvas.drawArc(rect, -math.pi * 0.25, math.pi * 0.5, false, bluePaint);
+    // Green arc: bottom
+    canvas.drawArc(rect, math.pi * 0.25, math.pi * 0.5, false, greenPaint);
+    // Yellow arc: bottom-left
+    canvas.drawArc(rect, math.pi * 0.75, math.pi * 0.5, false, yellowPaint);
+
+    // Blue horizontal bar
+    final barPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTWH(w * 0.44, h * 0.5 - strokeWidth / 2, w * 0.56, strokeWidth),
+      barPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+Widget _buildGoogleLogo() {
+  return Container(
+    width: 22,
+    height: 22,
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      shape: BoxShape.circle,
+    ),
+    padding: const EdgeInsets.all(2.5),
+    child: CustomPaint(
+      size: const Size(17, 17),
+      painter: _GoogleLogoPainter(),
+    ),
+  );
+}
 
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
@@ -567,7 +637,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -591,24 +660,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Beautiful Logo Presentation
+                    // Beautiful Logo Presentation with glowing aura
                     Hero(
                       tag: 'app_logo',
                       child: Container(
-                        width: 80,
-                        height: 80,
+                        width: 86,
+                        height: 86,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFA78BFA),
+                            width: 3,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withOpacity(0.5),
-                              blurRadius: 30,
-                              offset: const Offset(0, 10),
+                              color: const Color(0xFF8B5CF6).withOpacity(0.55),
+                              blurRadius: 36,
+                              spreadRadius: 4,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(16),
                         child: Image.asset(
                           'assets/icon/app_icon.png',
                           fit: BoxFit.contain,
@@ -617,30 +691,46 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Modern Auth Card
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 450),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xAA1E293B)
-                            : const Color(0xAAFFFFFF),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.1)
-                              : Colors.black.withOpacity(0.05),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 30,
-                            offset: const Offset(0, 15),
+                    // Ultra-Premium Dark Glassmorphic Card
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 450),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xF018152E), // Deep cyber-obsidian
+                                Color(0xF0110E24),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF7C3AED).withOpacity(0.22),
+                                blurRadius: 40,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 12),
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.6),
+                                blurRadius: 30,
+                                offset: const Offset(0, 20),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 28,
+                              vertical: 32,
+                            ),
                             child: Form(
                               key: _formKey,
                               child: Column(
@@ -657,18 +747,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ? 'titleLogin'
                                             : 'titleRegister',
                                       ),
-                                      style: const TextStyle(
+                                      style: GoogleFonts.outfit(
                                         fontSize: 28,
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: -0.5,
                                         color: Colors.white,
-                                        shadows: [
-                                          Shadow(
-                                            color: Colors.black54,
-                                            blurRadius: 4,
-                                            offset: Offset(0, 2),
-                                          ),
-                                        ],
                                       ),
                                     ),
                                   ),
@@ -682,16 +765,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                       key: ValueKey(
                                         _isLogin ? 'subLogin' : 'subRegister',
                                       ),
-                                      style: const TextStyle(
+                                      style: GoogleFonts.outfit(
                                         fontSize: 14,
-                                        color: Colors.white70,
-                                        shadows: [
-                                          Shadow(
-                                            color: Colors.black54,
-                                            blurRadius: 2,
-                                            offset: Offset(0, 1),
-                                          ),
-                                        ],
+                                        color: const Color(0xFF94A3B8),
+                                        fontWeight: FontWeight.w400,
+                                        height: 1.4,
                                       ),
                                     ),
                                   ),
@@ -930,16 +1008,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                                     );
                                                   }
                                               },
-                                              child: const Text(
+                                              child: Text(
                                                 'Forgot Password?',
-                                                style: TextStyle(
-                                                  color: Colors.white70,
-                                                  shadows: [
-                                                    Shadow(
-                                                      color: Colors.black,
-                                                      blurRadius: 2,
-                                                    ),
-                                                  ],
+                                                style: GoogleFonts.outfit(
+                                                  color: const Color(0xFFA78BFA),
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
                                                 ),
                                               ),
                                             ),
@@ -950,16 +1024,54 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   const SizedBox(height: 32),
 
-                                  SizedBox(
+                                  Container(
                                     width: double.infinity,
-                                    child: CustomButton(
-                                      text: _isLogin
-                                          ? 'Sign In'
-                                          : 'Create Account',
-                                      isLoading: _isSubmitting,
-                                      onPressed: _isSubmitting
-                                          ? null
-                                          : _handleSubmit,
+                                    height: 52,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF8B5CF6),
+                                          Color(0xFF6D28D9),
+                                        ],
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF7C3AED).withOpacity(0.4),
+                                          blurRadius: 18,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: _isSubmitting ? null : _handleSubmit,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      child: _isSubmitting
+                                          ? const SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              ),
+                                            )
+                                          : Text(
+                                              _isLogin ? 'Sign In' : 'Create Account',
+                                              style: GoogleFonts.outfit(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                   const SizedBox(height: 16),
@@ -1015,61 +1127,56 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     )
                                   else
-                                    SizedBox(
+                                    Container(
                                       width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        icon: _isGoogleSubmitting
-                                            ? const SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child: Icon(
-                                                  Icons.close,
-                                                  size: 20,
-                                                  color: Colors.white,
-                                                ),
-                                              )
-                                            : const Icon(
-                                                Icons.g_mobiledata,
-                                                size: 28,
-                                                color: Colors.white,
-                                              ),
-                                        label: Text(
-                                          _isGoogleSubmitting
-                                              ? 'Cancel Sign-in'
-                                              : (_isLogin
-                                                    ? 'Sign in with Google'
-                                                    : 'Sign up with Google'),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                      height: 50,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF1F1B38).withOpacity(0.9),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.12),
+                                          width: 1.2,
                                         ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 14,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          side: BorderSide(
-                                            color: Colors.white.withOpacity(
-                                              0.3,
-                                            ),
-                                          ),
-                                          backgroundColor: Colors.white
-                                              .withOpacity(0.1),
-                                        ),
-                                        onPressed: _isSubmitting
-                                            ? null
-                                            : (_isGoogleSubmitting
-                                                  ? () => setState(
-                                                      () =>
-                                                          _isGoogleSubmitting =
-                                                              false,
-                                                    )
+                                      ),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(16),
+                                          onTap: _isSubmitting
+                                              ? null
+                                              : (_isGoogleSubmitting
+                                                  ? () => setState(() => _isGoogleSubmitting = false)
                                                   : _handleGoogleAction),
+                                          child: Center(
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                if (_isGoogleSubmitting)
+                                                  const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                                    ),
+                                                  )
+                                                else
+                                                  _buildGoogleLogo(),
+                                                const SizedBox(width: 12),
+                                                Text(
+                                                  _isGoogleSubmitting
+                                                      ? 'Connecting...'
+                                                      : (_isLogin ? 'Sign in with Google' : 'Sign up with Google'),
+                                                  style: GoogleFonts.outfit(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   const SizedBox(height: 24),
@@ -1079,37 +1186,37 @@ class _LoginScreenState extends State<LoginScreen> {
                                     children: [
                                       Text(
                                         _isLogin
-                                            ? 'Don\'t have an account?'
+                                            ? "Don't have an account?"
                                             : 'Already have an account?',
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          shadows: [
-                                            Shadow(
-                                              color: Colors.black,
-                                              blurRadius: 2,
-                                            ),
-                                          ],
+                                        style: GoogleFonts.outfit(
+                                          color: const Color(0xFF94A3B8),
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
                                         ),
                                       ),
+                                      const SizedBox(width: 4),
                                       TextButton(
                                         onPressed:
                                             (_isSubmitting ||
                                                 _isGoogleSubmitting)
                                             ? null
                                             : _toggleMode,
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          minimumSize: Size.zero,
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
                                         child: Text(
                                           _isLogin
                                               ? 'Create Account'
                                               : 'Sign In',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            shadows: [
-                                              Shadow(
-                                                color: Colors.black,
-                                                blurRadius: 2,
-                                              ),
-                                            ],
+                                          style: GoogleFonts.outfit(
+                                            color: const Color(0xFFA78BFA),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
                                           ),
                                         ),
                                       ),
@@ -1120,6 +1227,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                      ),
+                    ),
 
                     // Saved accounts overlay handles saved accounts
                   ],

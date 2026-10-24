@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class CustomTextField extends StatefulWidget {
   final TextEditingController controller;
@@ -42,9 +42,6 @@ class _CustomTextFieldState extends State<CustomTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     Widget textField = TextFormField(
       controller: widget.controller,
       focusNode: widget.focusNode,
@@ -56,12 +53,26 @@ class _CustomTextFieldState extends State<CustomTextField> {
       onChanged: widget.onChanged,
       onFieldSubmitted: widget.onFieldSubmitted,
       onTap: widget.onTap,
-      style: widget.isGlass ? TextStyle(color: Colors.white) : null,
+      style: widget.isGlass
+          ? GoogleFonts.outfit(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            )
+          : null,
       decoration: InputDecoration(
         hintText: widget.hintText,
-        hintStyle: widget.isGlass ? TextStyle(color: Colors.white70) : null,
+        hintStyle: widget.isGlass
+            ? GoogleFonts.outfit(
+                color: const Color(0xFF64748B),
+                fontSize: 14,
+              )
+            : null,
         filled: widget.isGlass,
         fillColor: Colors.transparent,
+        contentPadding: widget.isGlass
+            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 14)
+            : null,
         border: widget.isGlass ? InputBorder.none : null,
         enabledBorder: widget.isGlass ? InputBorder.none : null,
         focusedBorder: widget.isGlass ? InputBorder.none : null,
@@ -69,7 +80,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
             ? Icon(
                 widget.prefixIcon,
                 size: 20,
-                color: widget.isGlass ? Colors.white70 : null,
+                color: widget.isGlass ? const Color(0xFFA78BFA) : null,
               )
             : null,
         suffixIcon: widget.isPassword
@@ -79,7 +90,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
                       ? Icons.visibility_off_outlined
                       : Icons.visibility_outlined,
                   size: 20,
-                  color: widget.isGlass ? Colors.white70 : null,
+                  color: widget.isGlass ? Colors.white60 : null,
                 ),
                 onPressed: () {
                   setState(() {
@@ -94,11 +105,11 @@ class _CustomTextFieldState extends State<CustomTextField> {
     if (widget.isGlass) {
       textField = Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
+          color: const Color(0xFF1B1931).withOpacity(0.85),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
+            color: Colors.white.withOpacity(0.12),
+            width: 1.2,
           ),
         ),
         child: textField,
@@ -110,11 +121,16 @@ class _CustomTextFieldState extends State<CustomTextField> {
       children: [
         Text(
           widget.label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: widget.isGlass ? Colors.white : null,
-          ),
+          style: widget.isGlass
+              ? GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFE2E8F0),
+                )
+              : const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
         ),
         const SizedBox(height: 8),
         textField,
