@@ -31,14 +31,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      AppUpdateService.checkForUpdates(context);
-    });
-  }
-
   final List<Widget> _screens = const [
     HomeScreen(),
     RecentScreen(),
@@ -100,6 +92,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<FilesProvider>(context, listen: false).fetchTrash();
+      AppUpdateService.checkForUpdates(context);
     });
   }
 

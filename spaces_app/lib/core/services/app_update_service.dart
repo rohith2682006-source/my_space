@@ -78,9 +78,9 @@ class AppUpdateService {
         );
       } else if (!silent && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Spaces is already up to date! (v$currentVersion)'),
-            backgroundColor: Color(0xFF10B981),
+            backgroundColor: const Color(0xFF10B981),
           ),
         );
       }

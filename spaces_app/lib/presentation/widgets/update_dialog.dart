@@ -49,6 +49,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 _statusMessage = 'Downloading update (${percent.toInt()}%)...';
                 break;
               case OtaStatus.INSTALLING:
+              case OtaStatus.INSTALLATION_DONE:
                 _progress = 1.0;
                 _statusMessage = 'Preparing installation...';
                 break;
@@ -71,6 +72,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
               case OtaStatus.CHECKSUM_ERROR:
                 _isDownloading = false;
                 _errorMessage = 'File verification failed. Please try again.';
+                break;
+              default:
                 break;
             }
           });
