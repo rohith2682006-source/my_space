@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
 import 'api_endpoints.dart';
 import '../../data/services/auth_storage.dart';
 
@@ -21,67 +23,101 @@ class ApiResponse {
 
 class ApiClient {
   static final http.Client _client = http.Client();
+
   static void Function()? onUnauthorized;
 
-  static Future<Map<String, String>> _getHeaders({bool isMultipart = false}) async {
+  static Future<Map<String, String>> _getHeaders({
+    bool isMultipart = false,
+  }) async {
     final token = await AuthStorage.getAccessToken();
+
     final headers = <String, String>{
       'Accept': 'application/json',
     };
+
     if (!isMultipart) {
       headers['Content-Type'] = 'application/json';
     }
-    if (token != null) {
+
+    if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
     }
+
     return headers;
   }
 
   static Future<ApiResponse> get(String url) async {
     try {
       final headers = await _getHeaders();
-      final response = await _client.get(Uri.parse(url), headers: headers);
+
+      final response = await _client.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
       return _handleResponse(response, () => get(url));
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logNetworkError('GET', url, e, stackTrace);
+
       return ApiResponse(
         success: false,
-        message: 'Network error: Please check your connection',
+        message: 'Network error: $e',
         statusCode: 0,
       );
     }
   }
 
-  static Future<ApiResponse> post(String url, {Map<String, dynamic>? body}) async {
+  static Future<ApiResponse> post(
+    String url, {
+    Map<String, dynamic>? body,
+  }) async {
     try {
       final headers = await _getHeaders();
+
       final response = await _client.post(
         Uri.parse(url),
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
       );
-      return _handleResponse(response, () => post(url, body: body));
-    } catch (e) {
+
+      return _handleResponse(
+        response,
+        () => post(url, body: body),
+      );
+    } catch (e, stackTrace) {
+      _logNetworkError('POST', url, e, stackTrace);
+
       return ApiResponse(
         success: false,
-        message: 'Network error: Please check your connection',
+        message: 'Network error: $e',
         statusCode: 0,
       );
     }
   }
 
-  static Future<ApiResponse> patch(String url, {Map<String, dynamic>? body}) async {
+  static Future<ApiResponse> patch(
+    String url, {
+    Map<String, dynamic>? body,
+  }) async {
     try {
       final headers = await _getHeaders();
+
       final response = await _client.patch(
         Uri.parse(url),
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
       );
-      return _handleResponse(response, () => patch(url, body: body));
-    } catch (e) {
+
+      return _handleResponse(
+        response,
+        () => patch(url, body: body),
+      );
+    } catch (e, stackTrace) {
+      _logNetworkError('PATCH', url, e, stackTrace);
+
       return ApiResponse(
         success: false,
-        message: 'Network error: Please check your connection',
+        message: 'Network error: $e',
         statusCode: 0,
       );
     }
@@ -90,12 +126,19 @@ class ApiClient {
   static Future<ApiResponse> delete(String url) async {
     try {
       final headers = await _getHeaders();
-      final response = await _client.delete(Uri.parse(url), headers: headers);
+
+      final response = await _client.delete(
+        Uri.parse(url),
+        headers: headers,
+      );
+
       return _handleResponse(response, () => delete(url));
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logNetworkError('DELETE', url, e, stackTrace);
+
       return ApiResponse(
         success: false,
-        message: 'Network error: Please check your connection',
+        message: 'Network error: $e',
         statusCode: 0,
       );
     }
@@ -110,9 +153,12 @@ class ApiClient {
     try {
       final token = await AuthStorage.getAccessToken();
       final uri = Uri.parse(url);
+
       final request = http.MultipartRequest('POST', uri);
 
-      if (token != null) {
+      request.headers['Accept'] = 'application/json';
+
+      if (token != null && token.isNotEmpty) {
         request.headers['Authorization'] = 'Bearer $token';
       }
 
@@ -128,10 +174,12 @@ class ApiClient {
       final response = await http.Response.fromStream(streamedResponse);
 
       return _parseJsonResponse(response);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logNetworkError('UPLOAD', url, e, stackTrace);
+
       return ApiResponse(
         success: false,
-        message: 'Failed to upload file: $e',
+        message: 'File upload failed: $e',
         statusCode: 0,
       );
     }
@@ -141,12 +189,13 @@ class ApiClient {
     http.Response response,
     Future<ApiResponse> Function() retryRequest,
   ) async {
-    // If 401 Unauthorized, try to refresh token once
     if (response.statusCode == 401) {
       final refreshed = await _tryRefreshToken();
+
       if (refreshed) {
         return retryRequest();
       }
+
       onUnauthorized?.call();
     }
 
@@ -156,31 +205,59 @@ class ApiClient {
   static ApiResponse _parseJsonResponse(http.Response response) {
     try {
       final dynamic body = jsonDecode(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResponse(
-          success: body['success'] ?? true,
-          data: body['data'] ?? body,
-          message: body['message'],
-          statusCode: response.statusCode,
-        );
-      } else {
-        final errorObj = body['error'];
-        final message = errorObj != null && errorObj['message'] != null
-            ? errorObj['message']
-            : (body['message'] ?? 'An error occurred');
-        final code = errorObj != null ? errorObj['code'] : null;
 
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
         return ApiResponse(
-          success: false,
-          message: message,
-          errorCode: code,
+          success: body is Map
+              ? (body['success'] ?? true) == true
+              : true,
+          data: body is Map
+              ? (body['data'] ?? body)
+              : body,
+          message: body is Map ? body['message']?.toString() : null,
           statusCode: response.statusCode,
         );
       }
-    } catch (_) {
+
+      final dynamic errorObj =
+          body is Map ? body['error'] : null;
+
+      final String message;
+
+      if (errorObj is Map && errorObj['message'] != null) {
+        message = errorObj['message'].toString();
+      } else if (body is Map && body['message'] != null) {
+        message = body['message'].toString();
+      } else {
+        message = 'Request failed (${response.statusCode})';
+      }
+
+      final String? code =
+          errorObj is Map && errorObj['code'] != null
+              ? errorObj['code'].toString()
+              : null;
+
       return ApiResponse(
-        success: response.statusCode >= 200 && response.statusCode < 300,
-        message: response.statusCode >= 400 ? 'Server error (${response.statusCode})' : null,
+        success: false,
+        message: message,
+        errorCode: code,
+        statusCode: response.statusCode,
+      );
+    } catch (e, stackTrace) {
+      _logNetworkError(
+        'PARSE RESPONSE',
+        'HTTP ${response.statusCode}',
+        e,
+        stackTrace,
+      );
+
+      return ApiResponse(
+        success: response.statusCode >= 200 &&
+            response.statusCode < 300,
+        message: response.statusCode >= 400
+            ? 'Server error (${response.statusCode})'
+            : 'Invalid response received from server',
         statusCode: response.statusCode,
       );
     }
@@ -189,27 +266,75 @@ class ApiClient {
   static Future<bool> _tryRefreshToken() async {
     try {
       final refreshToken = await AuthStorage.getRefreshToken();
-      if (refreshToken == null) return false;
 
-      final res = await _client.post(
+      if (refreshToken == null || refreshToken.isEmpty) {
+        return false;
+      }
+
+      final response = await _client.post(
         Uri.parse(ApiEndpoints.refresh),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refreshToken': refreshToken}),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'refreshToken': refreshToken,
+        }),
       );
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final tokens = data['data']['tokens'];
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+
+        if (decoded is! Map) {
+          await AuthStorage.clearAll();
+          return false;
+        }
+
+        final dynamic data = decoded['data'];
+        final dynamic tokens =
+            data is Map ? data['tokens'] : null;
+
+        if (tokens is! Map ||
+            tokens['accessToken'] == null ||
+            tokens['refreshToken'] == null) {
+          await AuthStorage.clearAll();
+          return false;
+        }
+
         await AuthStorage.saveTokens(
-          accessToken: tokens['accessToken'],
-          refreshToken: tokens['refreshToken'],
+          accessToken: tokens['accessToken'].toString(),
+          refreshToken: tokens['refreshToken'].toString(),
         );
+
         return true;
       }
-    } catch (_) {
-      // Refresh failed
+    } catch (e, stackTrace) {
+      _logNetworkError(
+        'TOKEN REFRESH',
+        ApiEndpoints.refresh,
+        e,
+        stackTrace,
+      );
     }
+
     await AuthStorage.clearAll();
     return false;
+  }
+
+  static void _logNetworkError(
+    String method,
+    String url,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    // Diagnostic logging to identify the actual network exception.
+    // Avoid logging request bodies, passwords, or authentication tokens.
+    print('========== API NETWORK ERROR ==========');
+    print('Method: $method');
+    print('URL: $url');
+    print('Error type: ${error.runtimeType}');
+    print('Error: $error');
+    print('Stack trace: $stackTrace');
+    print('=======================================');
   }
 }
