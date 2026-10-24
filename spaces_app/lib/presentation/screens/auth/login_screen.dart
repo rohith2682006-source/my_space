@@ -244,6 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailFocusNode = FocusNode();
 
   final LayerLink _emailLayerLink = LayerLink();
+  final GlobalKey _emailFieldKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   List<Map<String, dynamic>> _savedAccounts = [];
 
@@ -252,93 +253,121 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     _loadSavedAccounts();
 
-    _emailFocusNode.addListener(() {
-      if (_emailFocusNode.hasFocus && _isLogin && _savedAccounts.isNotEmpty) {
-        _showOverlay();
-      }
-    });
+    _emailFocusNode.addListener(_onEmailFocusOrTextChanged);
+    _emailController.addListener(_onEmailFocusOrTextChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<AuthProvider>().clearError();
     });
   }
 
-  Widget _buildSavedAccountTile(Map<String, dynamic> acc) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () async {
+  void _onEmailFocusOrTextChanged() {
+    if (!_isLogin || _savedAccounts.isEmpty) {
+      _hideOverlay();
+      return;
+    }
+
+    if (_emailFocusNode.hasFocus) {
+      if (_emailController.text.isEmpty) {
+        _showOverlay();
+      } else {
         _hideOverlay();
+      }
+    } else {
+      _hideOverlay();
+    }
+  }
 
-        final localAuth = LocalAuthentication();
-        bool didAuthenticate = false;
-        try {
-          didAuthenticate = await localAuth.authenticate(
-            localizedReason:
-                'Please authenticate to sign in to ${acc['email']}',
-          );
-        } catch (e) {
-          if (mounted) {
-            _showErrorPopup('Authentication failed: $e');
-          }
-          return;
-        }
+  Widget _buildSavedAccountTile(Map<String, dynamic> acc) {
+    final initials = (acc['firstName'] ?? 'U').toString().trim().isNotEmpty
+        ? (acc['firstName'] ?? 'U').toString().trim().substring(0, 1).toUpperCase()
+        : 'U';
+    final fullName = '${acc['firstName'] ?? ''} ${acc['lastName'] ?? ''}'.trim();
+    final displayName = fullName.isNotEmpty ? fullName : 'User';
+    final email = acc['email'] ?? '';
 
-        if (didAuthenticate && mounted) {
-          final auth = Provider.of<AuthProvider>(context, listen: false);
-          auth.clearError();
-          final refreshToken = acc['refreshToken'];
-          if (refreshToken != null && refreshToken.toString().isNotEmpty) {
-            final success = await auth.loginWithRefreshToken(
-              refreshToken.toString(),
-              email: acc['email'],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          _hideOverlay();
+
+          final localAuth = LocalAuthentication();
+          bool didAuthenticate = false;
+          try {
+            didAuthenticate = await localAuth.authenticate(
+              localizedReason:
+                  'Please authenticate to sign in to $email',
             );
-            if (!success && mounted) {
-              // The session has expired or was revoked. Update storage so stale token isn't reused.
-              await AuthStorage.updateSavedAccountToken(
-                acc['email'] ?? '',
-                null,
+          } catch (e) {
+            if (mounted) {
+              _showErrorPopup('Authentication failed: $e');
+            }
+            return;
+          }
+
+          if (didAuthenticate && mounted) {
+            final auth = Provider.of<AuthProvider>(context, listen: false);
+            auth.clearError();
+            final refreshToken = acc['refreshToken'];
+            if (refreshToken != null && refreshToken.toString().isNotEmpty) {
+              final success = await auth.loginWithRefreshToken(
+                refreshToken.toString(),
+                email: acc['email'],
               );
-              await _loadSavedAccounts();
+              if (!success && mounted) {
+                final isNetworkError = auth.errorMessage?.toLowerCase().contains('network') == true ||
+                    auth.errorMessage?.toLowerCase().contains('connection') == true ||
+                    auth.errorMessage?.toLowerCase().contains('failed host lookup') == true;
 
-              if (mounted) {
-                auth.clearError();
-                _emailController.text = acc['email'] ?? '';
-                _passwordController.clear();
-                _passwordFocusNode.requestFocus();
+                if (!isNetworkError) {
+                  // The session has truly expired or was revoked. Update storage so stale token isn't reused.
+                  await AuthStorage.updateSavedAccountToken(
+                    acc['email'] ?? '',
+                    null,
+                  );
+                  await _loadSavedAccounts();
+                }
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Session expired for ${acc['email']}. Please enter your password to sign in.',
+                if (mounted) {
+                  auth.clearError();
+                  _emailController.text = acc['email'] ?? '';
+                  _passwordController.clear();
+                  _passwordFocusNode.requestFocus();
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isNetworkError
+                            ? 'Network error. Please check your internet connection.'
+                            : 'Session expired for $email. Please enter your password to sign in.',
+                      ),
+                      backgroundColor: isNetworkError ? AppColors.error : AppColors.primary,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                    backgroundColor: AppColors.primary,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+                  );
+                }
+              } else if (success && mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+                  (route) => false,
                 );
               }
-            } else if (success && mounted) {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-                (route) => false,
-              );
+            } else {
+              // No saved token — smoothly autofill email and focus password
+              auth.clearError();
+              _emailController.text = acc['email'] ?? '';
+              _passwordController.clear();
+              _passwordFocusNode.requestFocus();
             }
-          } else {
-            // No saved token — smoothly autofill email and focus password
-            auth.clearError();
-            _emailController.text = acc['email'] ?? '';
-            _passwordController.clear();
-            _passwordFocusNode.requestFocus();
           }
-        }
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
@@ -346,47 +375,82 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: AppColors.primary.withOpacity(0.25),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF8B5CF6),
+                      Color(0xFF6D28D9),
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFA78BFA).withOpacity(0.5),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF7C3AED).withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
                 child: Text(
-                  (acc['firstName'] ?? 'U').substring(0, 1).toUpperCase(),
-                  style: const TextStyle(
+                  initials,
+                  style: GoogleFonts.outfit(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${acc['firstName'] ?? ''} ${acc['lastName'] ?? ''}'
-                          .trim(),
-                      style: const TextStyle(
+                      displayName,
+                      style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
-                        fontSize: 15,
+                        fontSize: 14,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      acc['email'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.white60,
+                      email,
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        color: const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w400,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: Colors.white.withOpacity(0.3),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.fingerprint_rounded,
+                  size: 16,
+                  color: Color(0xFFA78BFA),
+                ),
               ),
             ],
           ),
@@ -397,8 +461,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showOverlay() {
     if (_overlayEntry != null) return;
+    if (!_isLogin || _savedAccounts.isEmpty || _emailController.text.isNotEmpty) return;
+
     final accounts = List<Map<String, dynamic>>.from(_savedAccounts);
     if (accounts.isEmpty) return;
+
+    final renderBox = _emailFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final fieldWidth = renderBox?.size.width ?? 380.0;
+    final fieldHeight = renderBox?.size.height ?? 86.0;
 
     _overlayEntry = OverlayEntry(
       builder: (overlayContext) {
@@ -412,62 +482,104 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             Positioned(
-              width: 380,
+              width: fieldWidth,
               child: CompositedTransformFollower(
                 link: _emailLayerLink,
                 showWhenUnlinked: false,
-                offset: const Offset(0, 90),
+                offset: Offset(0, fieldHeight + 6),
                 child: Material(
                   color: Colors.transparent,
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1B4B).withOpacity(0.97),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.6),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Recent Accounts',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white.withOpacity(0.5),
-                                    letterSpacing: 0.8,
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => _hideOverlay(),
-                                  child: Icon(
-                                    Icons.close,
-                                    size: 16,
-                                    color: Colors.white54,
-                                  ),
-                                ),
-                              ],
-                            ),
+                  elevation: 12,
+                  borderRadius: BorderRadius.circular(20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xF518152E),
+                              Color(0xF5110E24),
+                            ],
                           ),
-                          ...accounts.map((acc) => _buildSavedAccountTile(acc)),
-                        ],
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFF8B5CF6).withOpacity(0.4),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7C3AED).withOpacity(0.28),
+                              blurRadius: 32,
+                              spreadRadius: 1,
+                              offset: const Offset(0, 10),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.65),
+                              blurRadius: 24,
+                              offset: const Offset(0, 14),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 12, 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.manage_accounts_rounded,
+                                      size: 14,
+                                      color: Color(0xFFA78BFA),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'SAVED ACCOUNTS',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFFA78BFA),
+                                      letterSpacing: 1.1,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: _hideOverlay,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                          color: Colors.white.withOpacity(0.6),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              height: 1,
+                              color: Colors.white.withOpacity(0.08),
+                            ),
+                            ...accounts.map((acc) => _buildSavedAccountTile(acc)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -498,6 +610,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _hideOverlay();
+    _emailFocusNode.removeListener(_onEmailFocusOrTextChanged);
+    _emailController.removeListener(_onEmailFocusOrTextChanged);
     _emailController.dispose();
     _passwordController.dispose();
     _firstNameController.dispose();
@@ -627,6 +741,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _toggleMode() {
+    _hideOverlay();
     context.read<AuthProvider>().clearError();
     setState(() {
       _isLogin = !_isLogin;
@@ -889,6 +1004,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ],
 
                                         CompositedTransformTarget(
+                                          key: _emailFieldKey,
                                           link: _emailLayerLink,
                                           child: CustomTextField(
                                             controller: _emailController,
@@ -901,7 +1017,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                             isGlass: true,
                                             onTap: () {
                                               if (_isLogin &&
-                                                  _savedAccounts.isNotEmpty) {
+                                                  _savedAccounts.isNotEmpty &&
+                                                  _emailController.text.isEmpty) {
+                                                _showOverlay();
+                                              } else {
+                                                _hideOverlay();
+                                              }
+                                            },
+                                            onChanged: (val) {
+                                              if (val.isNotEmpty) {
+                                                _hideOverlay();
+                                              } else if (_isLogin &&
+                                                  _savedAccounts.isNotEmpty &&
+                                                  _emailFocusNode.hasFocus) {
                                                 _showOverlay();
                                               }
                                             },

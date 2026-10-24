@@ -1,8 +1,8 @@
 class ApiEndpoints {
-  // Override with --dart-define=API_BASE_URL=... for emulators and devices.
+  // Default to live Render cloud backend for all devices (Android, iOS, Web, Desktop)
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3000/api/v1',
+    defaultValue: 'https://my-space-backend-wbdw.onrender.com/api/v1',
   );
 
   // Auth

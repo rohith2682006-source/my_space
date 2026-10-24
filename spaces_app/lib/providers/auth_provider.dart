@@ -508,10 +508,14 @@ class AuthProvider extends ChangeNotifier {
     // Only revoke on the server if this account is NOT a saved account on this device.
     // Saved accounts intentionally preserve their device credentials for 1-click / biometric login.
     if (!isSaved && refreshToken != null) {
-      await ApiClient.post(
-        ApiEndpoints.logout,
-        body: {'refreshToken': refreshToken},
-      );
+      try {
+        await ApiClient.post(
+          ApiEndpoints.logout,
+          body: {'refreshToken': refreshToken},
+        );
+      } catch (_) {
+        // Silently ignore network failures on logout so user is always signed out locally
+      }
     }
 
     await AuthStorage.clearAll();
