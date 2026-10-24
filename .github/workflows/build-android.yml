@@ -1,0 +1,54 @@
+name: Build My Space Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'spaces_app/**'
+      - '.github/workflows/build-android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: spaces_app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: >
+          flutter build apk --release
+          --dart-define=API_BASE_URL=https://my-space-backend-wbdw.onrender.com/api/v1
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-space-android-apk
+          path: spaces_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
+          
