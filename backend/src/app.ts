@@ -137,6 +137,21 @@ export function createApp(): Express {
     sharingController.viewFile(req, res, next);
   });
 
+  // 6.6 In-App Auto-Update Version Endpoint
+  app.get(`${apiPrefix}/system/version`, (_req, res) => {
+    res.status(200).json({
+      success: true,
+      data: {
+        latestVersion: '1.0.0',
+        latestBuildNumber: 1,
+        downloadUrl:
+          'https://github.com/rohith2682006-source/my_space/releases/latest/download/app-release.apk',
+        releaseNotes: 'Welcome to Spaces! Performance and digital organization updates.',
+        isForceUpdate: false,
+      },
+    });
+  });
+
   // 7. Flutter Web Application Static Serving
   const webBuildPath = path.resolve(
     __dirname,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/services/app_update_service.dart';
 import '../../../../providers/theme_provider.dart';
 import '../../widgets/top_alert_bar.dart';
 import '../../widgets/settings_container_dialog.dart';
@@ -120,6 +121,31 @@ class AppSettingsScreen extends StatelessWidget {
           )
               .animate()
               .fadeIn(duration: 280.ms, delay: 120.ms)
+              .slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic),
+
+          // Updates & Version Group
+          SettingsGroup(
+            header: 'Updates & Version',
+            footer: 'Spaces automatically checks for updates on startup.',
+            children: [
+              SettingsRow(
+                icon: Icons.system_update_rounded,
+                iconColor: const Color(0xFF10B981),
+                title: 'Check for Updates',
+                subtitle: 'Search for new versions and install seamlessly',
+                trailing: const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: Colors.white38,
+                ),
+                onTap: () {
+                  AppUpdateService.checkForUpdates(context, silent: false);
+                },
+              ),
+            ],
+          )
+              .animate()
+              .fadeIn(duration: 280.ms, delay: 160.ms)
               .slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic),
         ],
       ),

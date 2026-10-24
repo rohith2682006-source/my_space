@@ -51,6 +51,8 @@ dependencies:
   crypto: ^3.0.7
   google_sign_in: ^7.2.0
   google_sign_in_all_platforms: ^2.0.3
+  package_info_plus: ^9.0.1
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:

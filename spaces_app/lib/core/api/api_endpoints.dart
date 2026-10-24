@@ -114,4 +114,7 @@ class ApiEndpoints {
 
   // Realtime SSE
   static const String realtimeEvents = '$baseUrl/realtime/events';
+
+  // System & Auto-Update
+  static const String appVersion = '$baseUrl/system/version';
 }
