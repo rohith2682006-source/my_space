@@ -23,6 +23,9 @@ export class EmailService {
       this.transporter = nodemailer.createTransport({
         service,
         auth: { user: user.trim(), pass: cleanPass },
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000,
       });
       return this.transporter;
     }
@@ -34,6 +37,9 @@ export class EmailService {
         port,
         secure: port === 465,
         auth: { user: user.trim(), pass: cleanPass },
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000,
       });
       return this.transporter;
     }
@@ -66,14 +72,20 @@ export class EmailService {
     if (transporter) {
       try {
         const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
-        const info = await transporter.sendMail({
+        const sendPromise = transporter.sendMail({
           from: `"Spaces Security" <${fromAddress}>`,
           to,
           subject,
           text,
           html,
         });
-        console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}. MessageId: ${info.messageId}`);
+
+        const timeoutPromise = new Promise<{ messageId?: string }>((_, reject) =>
+          setTimeout(() => reject(new Error('SMTP connection timed out')), 5000)
+        );
+
+        const info: any = await Promise.race([sendPromise, timeoutPromise]);
+        console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}. MessageId: ${info?.messageId}`);
         return { sent: true, message: `OTP sent to ${to}` };
       } catch (err: any) {
         console.error(`[EMAIL ERROR] Failed to send email via SMTP:`, err.message);

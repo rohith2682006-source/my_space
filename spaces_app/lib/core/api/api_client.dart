@@ -42,8 +42,8 @@ class ApiClient {
 
   /// Hosted backends on free tiers (e.g. Render) sleep when idle and need up to
   /// ~60s to cold start. Wait generously and retry on gateway errors / timeouts.
-  static const Duration _requestTimeout = Duration(seconds: 60);
-  static const int _maxAttempts = 3;
+  static const Duration _requestTimeout = Duration(seconds: 25);
+  static const int _maxAttempts = 2;
 
   static Future<http.Response> _withRetry(
     Future<http.Response> Function(Map<String, String> headers) send,

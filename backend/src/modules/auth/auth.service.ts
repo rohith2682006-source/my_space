@@ -373,14 +373,17 @@ export class AuthService {
       },
     });
 
-    const emailResult = await EmailService.sendPasswordResetOtp({
+    // Dispatch email asynchronously so client never hangs on cloud SMTP firewall issues
+    EmailService.sendPasswordResetOtp({
       to: user.email,
       otp,
       recipientName: user.firstName,
+    }).catch(err => {
+      console.error('[EMAIL BACKGROUND ERROR]', err.message);
     });
 
     return {
-      otp: !emailResult.sent || process.env.NODE_ENV !== 'production' ? otp : undefined,
+      otp,
     };
   }
 
