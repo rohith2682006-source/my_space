@@ -15,6 +15,8 @@ class CustomTextField extends StatefulWidget {
   final VoidCallback? onTap;
   final FocusNode? focusNode;
   final bool isGlass;
+  final bool enabled;
+  final bool readOnly;
 
   const CustomTextField({
     super.key,
@@ -31,6 +33,8 @@ class CustomTextField extends StatefulWidget {
     this.onTap,
     this.focusNode,
     this.isGlass = false,
+    this.enabled = true,
+    this.readOnly = false,
   });
 
   @override
@@ -42,9 +46,12 @@ class _CustomTextFieldState extends State<CustomTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final isInteractive = widget.enabled && !widget.readOnly;
     Widget textField = TextFormField(
       controller: widget.controller,
       focusNode: widget.focusNode,
+      enabled: widget.enabled,
+      readOnly: widget.readOnly,
       obscureText: widget.isPassword ? _obscureText : false,
       keyboardType: widget.keyboardType,
       textInputAction: widget.isPassword ? TextInputAction.done : null,
@@ -55,11 +62,13 @@ class _CustomTextFieldState extends State<CustomTextField> {
       onTap: widget.onTap,
       style: widget.isGlass
           ? GoogleFonts.outfit(
-              color: Colors.white,
+              color: isInteractive ? Colors.white : Colors.white70,
               fontSize: 15,
               fontWeight: FontWeight.w500,
             )
-          : null,
+          : TextStyle(
+              color: isInteractive ? null : Colors.black54,
+            ),
       decoration: InputDecoration(
         hintText: widget.hintText,
         hintStyle: widget.isGlass

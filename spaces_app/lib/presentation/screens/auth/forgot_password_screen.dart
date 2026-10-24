@@ -9,7 +9,7 @@ import '../../widgets/custom_text_field.dart';
 import '../../widgets/unified_back_button.dart';
 import 'login_screen.dart';
 import '../main_navigation_screen.dart';
-import '../../../data/services/auth_storage.dart';
+import '../../widgets/top_alert_bar.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   final String? initialEmail;
@@ -96,6 +96,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _currentStep = 2;
         _errorMessage = null;
       });
+      TopAlertBar.showSuccess(
+        context,
+        'Verification code sent to $email',
+      );
     } else {
       setState(() {
         _errorMessage =

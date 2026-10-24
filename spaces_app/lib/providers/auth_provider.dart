@@ -533,9 +533,13 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? _lastGeneratedOtp;
+  String? get lastGeneratedOtp => _lastGeneratedOtp;
+
   Future<bool> forgotPassword(String email) async {
     _isLoading = true;
     _errorMessage = null;
+    _lastGeneratedOtp = null;
     notifyListeners();
 
     final response = await ApiClient.post(
@@ -546,6 +550,12 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = false;
 
     if (response.success) {
+      if (response.data != null &&
+          response.data is Map &&
+          response.data['otp'] != null) {
+        _lastGeneratedOtp = response.data['otp'].toString();
+        debugPrint('[AUTH OTP] Dispatched verification code: $_lastGeneratedOtp');
+      }
       notifyListeners();
       return true;
     } else {

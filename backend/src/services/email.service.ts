@@ -14,9 +14,9 @@ export class EmailService {
 
     const host = process.env.SMTP_HOST;
     const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER || process.env.EMAIL_USER;
-    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
-    const service = process.env.SMTP_SERVICE; // e.g. 'gmail'
+    const user = process.env.SMTP_USER || process.env.EMAIL_USER || 'rohithro.sg@gmail.com';
+    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'oarr ygnm tejc ssxz';
+    const service = process.env.SMTP_SERVICE || 'gmail'; // e.g. 'gmail'
 
     if (service && user && pass) {
       const cleanPass = pass.replace(/\s+/g, '');
@@ -65,15 +65,15 @@ export class EmailService {
 
     if (transporter) {
       try {
-        const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'no-reply@spaces.local';
-        await transporter.sendMail({
+        const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
+        const info = await transporter.sendMail({
           from: `"Spaces Security" <${fromAddress}>`,
           to,
           subject,
           text,
           html,
         });
-        console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}`);
+        console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}. MessageId: ${info.messageId}`);
         return { sent: true, message: `OTP sent to ${to}` };
       } catch (err: any) {
         console.error(`[EMAIL ERROR] Failed to send email via SMTP:`, err.message);

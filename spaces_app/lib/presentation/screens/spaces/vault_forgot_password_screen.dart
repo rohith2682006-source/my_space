@@ -66,6 +66,18 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
       begin: 0.3,
       end: 0.8,
     ).animate(CurvedAnimation(parent: _shieldAnim, curve: Curves.easeInOut));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        final regEmail = (auth.user?.email ?? '').trim();
+        if (regEmail.isNotEmpty) {
+          setState(() {
+            _emailController.text = regEmail;
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -94,17 +106,18 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
 
   // ─── Step 1: Request OTP with Registered Email Check ────────────────────────
   Future<void> _handleRequestOtp() async {
-    if (!_formKeyEmail.currentState!.validate() || _isLoading) return;
+    if (_isLoading) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final registeredEmail = (auth.user?.email ?? '').trim();
+    if (_emailController.text.trim().isEmpty && registeredEmail.isNotEmpty) {
+      _emailController.text = registeredEmail;
+    }
 
     final enteredEmail = _emailController.text.trim().toLowerCase();
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final registeredEmail = (auth.user?.email ?? '').trim().toLowerCase();
-
-    // Verify email matches registered app account
-    if (registeredEmail.isNotEmpty && enteredEmail != registeredEmail) {
+    if (enteredEmail.isEmpty) {
       setState(() {
-        _errorMessage =
-            'This email does not match your registered account email ($registeredEmail). Please enter your registered email.';
+        _errorMessage = 'No registered email found for this account.';
       });
       return;
     }
@@ -556,7 +569,7 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
   String _getStepSubtitle() {
     switch (_currentStep) {
       case 1:
-        return 'Enter your registered Spaces email to receive a 4-digit identity verification code.';
+        return 'A 4-digit security code will be sent to your registered account email to verify vault ownership.';
       case 2:
         return 'Enter the 4-digit code sent to ${_emailController.text.trim()}.';
       case 3:
@@ -573,23 +586,55 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
     return Form(
       key: _formKeyEmail,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CustomTextField(
             controller: _emailController,
-            label: 'Registered Email',
+            label: 'Registered Email (Fixed)',
             hintText: 'user@example.com',
-            prefixIcon: Icons.email_outlined,
+            prefixIcon: Icons.lock_outline_rounded,
+            enabled: false,
+            readOnly: true,
             keyboardType: TextInputType.emailAddress,
             validator: (val) {
               if (val == null || val.trim().isEmpty) {
-                return 'Please enter your registered email';
-              }
-              if (!val.contains('@') || !val.contains('.')) {
-                return 'Please enter a valid email address';
+                return 'Registered email is required';
               }
               return null;
             },
             onFieldSubmitted: (_) => _handleRequestOtp(),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.35),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.shield_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Fixed to your registered Spaces account. For security, vault reset codes cannot be sent to other emails.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           SizedBox(
@@ -628,14 +673,23 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _currentStep = 1;
-                  _errorMessage = null;
-                });
-              },
-              child: const Text('Change email'),
+            Row(
+              children: [
+                const Icon(
+                  Icons.mark_email_read_outlined,
+                  size: 14,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _emailController.text.trim(),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
             TextButton(
               onPressed: _resendCountdown == 0 ? _handleRequestOtp : null,

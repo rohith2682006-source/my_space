@@ -96,7 +96,7 @@ export class AuthService {
     const normalizedEmail = input.email.toLowerCase().trim();
     const user = await prisma.user.findFirst({
       where: {
-        email: { equals: normalizedEmail },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
     });
@@ -352,7 +352,7 @@ export class AuthService {
     const normalizedEmail = input.email.toLowerCase().trim();
     const user = await prisma.user.findFirst({
       where: {
-        email: { equals: normalizedEmail },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
     });
@@ -373,13 +373,15 @@ export class AuthService {
       },
     });
 
-    await EmailService.sendPasswordResetOtp({
+    const emailResult = await EmailService.sendPasswordResetOtp({
       to: user.email,
       otp,
       recipientName: user.firstName,
     });
 
-    return {};
+    return {
+      otp: !emailResult.sent || process.env.NODE_ENV !== 'production' ? otp : undefined,
+    };
   }
 
   /**
@@ -389,7 +391,7 @@ export class AuthService {
     const normalizedEmail = input.email.toLowerCase().trim();
     const user = await prisma.user.findFirst({
       where: {
-        email: { equals: normalizedEmail },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
     });
@@ -410,7 +412,7 @@ export class AuthService {
     const normalizedEmail = input.email.toLowerCase().trim();
     const user = await prisma.user.findFirst({
       where: {
-        email: { equals: normalizedEmail },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
     });
