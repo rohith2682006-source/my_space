@@ -1,3 +1,4 @@
+
 import express, { Express } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -30,6 +31,10 @@ import { realtimeRoutes } from './modules/realtime/realtime.routes';
 export function createApp(): Express {
   const app = express();
 
+  // Trust one reverse-proxy hop in front of this application.
+  // This must match the actual Render deployment topology.
+  app.set('trust proxy', 1);
+
   // 1. Security Headers (Helmet)
   app.use(
     helmet({
@@ -42,11 +47,16 @@ export function createApp(): Express {
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow mobile app requests (where origin is undefined) or explicitly configured CORS origins
-        if (!origin || env.corsOrigins.includes(origin) || env.corsOrigins.includes('*')) {
+        // Allow mobile app requests (where origin is undefined)
+        // or explicitly configured CORS origins.
+        if (
+          !origin ||
+          env.corsOrigins.includes(origin) ||
+          env.corsOrigins.includes('*')
+        ) {
           callback(null, true);
         } else if (!env.isProduction) {
-          callback(null, true); // Permissive during local development
+          callback(null, true);
         } else {
           callback(new Error('Origin blocked by CORS policy'));
         }
@@ -59,12 +69,19 @@ export function createApp(): Express {
   // Request logger & response timer
   app.use((req, res, next) => {
     const start = performance.now();
+
     res.on('finish', () => {
       const elapsed = (performance.now() - start).toFixed(1);
+
       if (req.path.startsWith('/api') || req.path === '/health') {
-        console.log(`📡 [${req.method}] ${req.originalUrl} ${res.statusCode} (${elapsed}ms) - Auth: ${req.headers.authorization ? 'Bearer' : 'NONE'}`);
+        console.log(
+          `📡 [${req.method}] ${req.originalUrl} ${res.statusCode} (${elapsed}ms) - Auth: ${
+            req.headers.authorization ? 'Bearer' : 'NONE'
+          }`
+        );
       }
     });
+
     next();
   });
 
@@ -82,9 +99,10 @@ export function createApp(): Express {
       },
     },
   });
+
   app.use(limiter);
 
-  // 4. Body Parsers (Production sized)
+  // 4. Body Parsers
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
   app.use(cookieParser());
@@ -101,6 +119,7 @@ export function createApp(): Express {
 
   // 6. API Routes
   const apiPrefix = `/api/${env.API_VERSION}`;
+
   app.use(`${apiPrefix}/auth`, authRoutes);
   app.use(`${apiPrefix}/spaces`, spacesRoutes);
   app.use(`${apiPrefix}/files`, filesRoutes);
@@ -112,19 +131,25 @@ export function createApp(): Express {
   app.use(`${apiPrefix}/realtime`, realtimeRoutes);
   app.use(`${apiPrefix}`, discoveryRoutes);
 
-  // 6.5 Direct Public File Share Links (Streams only the shared file in real-time)
+  // 6.5 Direct Public File Share Links
   app.get('/share/:token', (req, res, next) => {
     sharingController.viewFile(req, res, next);
   });
 
   // 7. Flutter Web Application Static Serving
-  const webBuildPath = path.resolve(__dirname, '../../spaces_app/build/web');
+  const webBuildPath = path.resolve(
+    __dirname,
+    '../../spaces_app/build/web'
+  );
+
   if (fs.existsSync(webBuildPath)) {
     app.use(express.static(webBuildPath));
+
     app.use((req, res, next) => {
       if (req.path.startsWith('/api') || req.method !== 'GET') {
         return next();
       }
+
       res.sendFile(path.join(webBuildPath, 'index.html'));
     });
   }
