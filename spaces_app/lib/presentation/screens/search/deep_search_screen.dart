@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:ui';
+import '../../../presentation/widgets/top_alert_bar.dart';
+import '../../widgets/ambient_background.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/unified_back_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/api/api_client.dart';
@@ -32,14 +36,14 @@ class _Source {
   });
 
   factory _Source.fromJson(Map<String, dynamic> j) => _Source(
-        fileId: j['fileId'] as String? ?? '',
-        fileName: j['fileName'] as String? ?? 'Unknown file',
-        spaceName: j['spaceName'] as String? ?? '',
-        fileType: (j['fileType'] as String? ?? '').toLowerCase(),
-        pageNumber: j['pageNumber'] as int?,
-        excerpt: j['excerpt'] as String? ?? '',
-        score: ((j['score'] as num?) ?? 0).toDouble(),
-      );
+    fileId: j['fileId'] as String? ?? '',
+    fileName: j['fileName'] as String? ?? 'Unknown file',
+    spaceName: j['spaceName'] as String? ?? '',
+    fileType: (j['fileType'] as String? ?? '').toLowerCase(),
+    pageNumber: j['pageNumber'] as int?,
+    excerpt: j['excerpt'] as String? ?? '',
+    score: ((j['score'] as num?) ?? 0).toDouble(),
+  );
 }
 
 class _DeepResult {
@@ -120,17 +124,20 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
     try {
       final response = await ApiClient.post(
         ApiEndpoints.aiDeepSearch,
-        body: {'query': query, 'spaceIds': []},
+        body: {'message': query, 'query': query, 'spaceIds': []},
       );
 
       if (!mounted) return;
 
       if (!response.success) {
-        throw Exception(response.message ?? 'Deep search failed');
+        throw Exception(response.message ?? 'Search failed');
       }
 
       final data = response.data as Map<String, dynamic>? ?? {};
-      final sources = ((data['sources'] as List?) ?? [])
+
+      final List<dynamic> sourceList = data['sources'] as List? ?? [];
+
+      final sources = sourceList
           .map((s) => _Source.fromJson(s as Map<String, dynamic>))
           .toList();
 
@@ -138,8 +145,8 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
         _result = _DeepResult(
           answer: data['answer'] as String? ?? '',
           sources: sources,
-          creditsUsed: (data['creditsUsed'] as num?)?.toInt() ?? 5,
-          creditsRemaining: (data['creditsRemaining'] as num?)?.toInt() ?? 0,
+          creditsUsed: (data['creditsCharged'] as num?)?.toInt() ?? 5,
+          creditsRemaining: (data['remainingCredits'] as num?)?.toInt() ?? 0,
         );
       });
 
@@ -159,53 +166,70 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
     final surface = isDark ? AppColors.darkSurface : AppColors.lightSurface;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-    final textSecondary =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final textPrimary = isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
+    final textSecondary = isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: _buildAppBar(isDark, textPrimary, textSecondary),
-      body: Column(
-        children: [
-          // Search bar
-          _buildSearchBar(isDark, surface),
-          // Content
-          Expanded(
-            child: _isSearching
-                ? _buildLoadingState(isDark)
-                : _error != null
-                    ? _buildErrorState(_error!, textPrimary, textSecondary)
-                    : _result != null
-                        ? _buildResultView(_result!, isDark, textPrimary,
-                            textSecondary, surface)
-                        : _buildEmptyState(isDark, textPrimary, textSecondary),
-          ),
-        ],
+    return AmbientBackground(
+      isDark: isDark,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: _buildAppBar(isDark, textPrimary, textSecondary),
+        body: Column(
+          children: [
+            // Search bar
+            _buildSearchBar(isDark, surface),
+            // Content
+            Expanded(
+              child: _isSearching
+                  ? _buildLoadingState(isDark)
+                  : _error != null
+                  ? _buildErrorState(_error!, textPrimary, textSecondary)
+                  : _result != null
+                  ? _buildResultView(
+                      _result!,
+                      isDark,
+                      textPrimary,
+                      textSecondary,
+                      surface,
+                    )
+                  : _buildEmptyState(isDark, textPrimary, textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   AppBar _buildAppBar(bool isDark, Color textPrimary, Color textSecondary) {
     return AppBar(
-      backgroundColor:
-          isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor: Colors.transparent,
       elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-        tooltip: 'Back',
-        onPressed: () => Navigator.maybePop(context),
+      flexibleSpace: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF130B2A) : const Color(0xFFF6F4EE),
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.white12 : AppColors.lightBorder,
+              width: 1,
+            ),
+          ),
+        ),
       ),
+      leading: const UnifiedBackButton(),
       title: Row(
         children: [
           ShaderMask(
-            shaderCallback: (b) =>
-                AppColors.primaryGradient.createShader(b),
-            child: const Icon(Icons.auto_awesome_rounded,
-                color: Colors.white, size: 22),
+            shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 8),
           Text(
@@ -223,30 +247,39 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
           builder: (_, credits, __) {
             final balance = credits.balance;
             return GestureDetector(
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const PlansScreen())),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PlansScreen()),
+              ),
               child: Container(
                 margin: const EdgeInsets.only(right: 16),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   gradient: balance != null && balance.balance < 5
                       ? const LinearGradient(
-                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)])
+                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                        )
                       : AppColors.primaryGradient,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.bolt_rounded,
-                        color: Colors.white, size: 14),
+                    const Icon(
+                      Icons.bolt_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       balance != null ? '${balance.balance} cr' : '--',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700),
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -259,64 +292,173 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
   }
 
   Widget _buildSearchBar(bool isDark, Color surface) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _focusNode.hasFocus
-              ? AppColors.primary
-              : isDark
-                  ? AppColors.darkBorder
-                  : AppColors.lightBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withAlpha(20),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: _queryCtrl,
-        focusNode: _focusNode,
-        maxLines: 3,
-        minLines: 1,
-        style: TextStyle(
-          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-          fontSize: 15,
-        ),
-        decoration: InputDecoration(
-          hintText: 'Ask anything about your documents…',
-          hintStyle: TextStyle(
-            color: isDark
-                ? AppColors.darkTextTertiary
-                : AppColors.lightTextTertiary,
-          ),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          suffixIcon: _queryCtrl.text.isNotEmpty
-              ? IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.send_rounded,
-                        color: Colors.white, size: 18),
+    final textSecondary = isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF130B2A)
+                  : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _focusNode.hasFocus
+                        ? AppColors.primary
+                        : (isDark
+                            ? Colors.white.withValues(alpha: 0.14)
+                            : AppColors.lightBorder),
+                    width: _focusNode.hasFocus ? 1.6 : 1.0,
                   ),
-                  onPressed: _search,
-                )
-              : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _focusNode.hasFocus
+                          ? AppColors.primary.withValues(alpha: isDark ? 0.25 : 0.15)
+                          : Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
+                      blurRadius: _focusNode.hasFocus ? 24 : 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(18, 6, 12, 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.search_rounded,
+                      size: 24,
+                      color: _focusNode.hasFocus
+                          ? AppColors.primary
+                          : (isDark ? Colors.white60 : Colors.black54),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Focus(
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.enter &&
+                              !HardwareKeyboard.instance.isShiftPressed) {
+                            if (!_isSearching) {
+                              _search();
+                            }
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: TextField(
+                          controller: _queryCtrl,
+                          focusNode: _focusNode,
+                          maxLines: 4,
+                          minLines: 2,
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkTextPrimary
+                                : AppColors.lightTextPrimary,
+                            fontSize: 16,
+                            height: 1.45,
+                          ),
+                          decoration: InputDecoration(
+                            hintText:
+                                'Ask anything about your documents… (Press Enter to search)',
+                            hintStyle: TextStyle(
+                              color: isDark
+                                  ? AppColors.darkTextTertiary
+                                  : AppColors.lightTextTertiary,
+                              fontSize: 15,
+                            ),
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _search(),
+                          textInputAction: TextInputAction.search,
+                        ),
+                      ),
+                    ),
+                    if (_queryCtrl.text.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: const BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(
+                              Icons.arrow_upward_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            onPressed: _search,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        // Deep Search Indicator
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16.0,
+            vertical: 0.0,
+          ).copyWith(bottom: 12.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 14,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Deep RAG Synthesis Search',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '5 credits per query',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
-        onChanged: (_) => setState(() {}),
-        onSubmitted: (_) => _search(),
-        textInputAction: TextInputAction.search,
-      ),
+      ],
     );
   }
 
@@ -334,15 +476,20 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    AppColors.primary
-                        .withAlpha((100 + (_pulseCtrl.value * 80)).toInt()),
-                    AppColors.accentPurple
-                        .withAlpha((40 + (_pulseCtrl.value * 60)).toInt()),
+                    AppColors.primary.withAlpha(
+                      (100 + (_pulseCtrl.value * 80)).toInt(),
+                    ),
+                    AppColors.accentPurple.withAlpha(
+                      (40 + (_pulseCtrl.value * 60)).toInt(),
+                    ),
                   ],
                 ),
               ),
-              child: const Icon(Icons.auto_awesome_rounded,
-                  color: Colors.white, size: 36),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -389,28 +536,36 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                          color: AppColors.primary.withAlpha(60),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8))
+                        color: AppColors.primary.withAlpha(60),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
                     ],
                   ),
-                  child: const Icon(Icons.search_rounded,
-                      color: Colors.white, size: 36),
+                  child: const Icon(
+                    Icons.search_rounded,
+                    color: Colors.white,
+                    size: 36,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Deep AI Search',
+                  'AI Search',
                   style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800),
+                    color: textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Ask questions across all your AI-enabled files.\nGet answers with exact source citations.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: textSecondary, fontSize: 14, height: 1.5),
+                    color: textSecondary,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -419,17 +574,24 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
           Text(
             'Try asking…',
             style: TextStyle(
-                color: textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+              color: textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 12),
-          ..._suggestions.map((s) => _SuggestionChip(
-                label: s,
-                onTap: () {
-                  _queryCtrl.text =
-                      s.replaceAll(RegExp(r'^[^\s]+ '), ''); // strip emoji
-                  _search();
-                },
-              )),
+          ..._suggestions.map(
+            (s) => _SuggestionChip(
+              label: s,
+              onTap: () {
+                _queryCtrl.text = s.replaceAll(
+                  RegExp(r'^[^\s]+ '),
+                  '',
+                ); // strip emoji
+                _search();
+              },
+            ),
+          ),
           const SizedBox(height: 24),
           _CreditCostBanner(),
         ],
@@ -438,7 +600,10 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
   }
 
   Widget _buildErrorState(
-      String error, Color textPrimary, Color textSecondary) {
+    String error,
+    Color textPrimary,
+    Color textSecondary,
+  ) {
     final isNoCredits = error.contains('credit') || error.contains('CREDIT');
     return Center(
       child: Padding(
@@ -456,9 +621,7 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                isNoCredits
-                    ? Icons.bolt_outlined
-                    : Icons.error_outline_rounded,
+                isNoCredits ? Icons.bolt_outlined : Icons.error_outline_rounded,
                 color: isNoCredits ? AppColors.warning : AppColors.error,
                 size: 32,
               ),
@@ -467,30 +630,36 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
             Text(
               isNoCredits ? 'Not Enough Credits' : 'Search Failed',
               style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700),
+                color: textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
-            Text(error,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textSecondary, fontSize: 14)),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textSecondary, fontSize: 14),
+            ),
             const SizedBox(height: 20),
             if (isNoCredits)
               ElevatedButton.icon(
                 onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const PlansScreen())),
+                  context,
+                  MaterialPageRoute(builder: (_) => const PlansScreen()),
+                ),
                 icon: const Icon(Icons.upgrade_rounded),
                 label: const Text('Buy Credits'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 12),
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               )
             else
@@ -498,8 +667,7 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                 onPressed: _search,
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('Try again'),
-                style:
-                    TextButton.styleFrom(foregroundColor: AppColors.primary),
+                style: TextButton.styleFrom(foregroundColor: AppColors.primary),
               ),
           ],
         ),
@@ -507,8 +675,13 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
     );
   }
 
-  Widget _buildResultView(_DeepResult result, bool isDark, Color textPrimary,
-      Color textSecondary, Color surface) {
+  Widget _buildResultView(
+    _DeepResult result,
+    bool isDark,
+    Color textPrimary,
+    Color textSecondary,
+    Color surface,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -516,95 +689,99 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
         children: [
           // Credit badge
           _CreditUsedBadge(
-              creditsUsed: result.creditsUsed,
-              creditsRemaining: result.creditsRemaining),
+            creditsUsed: result.creditsUsed,
+            creditsRemaining: result.creditsRemaining,
+          ),
           const SizedBox(height: 16),
 
-          // Answer card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppColors.primary.withAlpha(80),
-              ),
-              boxShadow: [
-                BoxShadow(
+          if (result.answer.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withAlpha(80)),
+                boxShadow: [
+                  BoxShadow(
                     color: AppColors.primary.withAlpha(20),
                     blurRadius: 20,
-                    offset: const Offset(0, 4))
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (b) =>
-                          AppColors.primaryGradient.createShader(b),
-                      child: const Icon(Icons.auto_awesome_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('AI Answer',
-                        style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, size: 16),
-                      tooltip: 'Copy answer',
-                      color: textSecondary,
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: result.answer));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Answer copied to clipboard'),
-                              duration: Duration(seconds: 2)),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  result.answer.isEmpty
-                      ? 'No relevant answer found in your documents.'
-                      : result.answer,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 15,
-                    height: 1.65,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (b) =>
+                            AppColors.primaryGradient.createShader(b),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'AI Answer',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 16),
+                        tooltip: 'Copy answer',
+                        color: textSecondary,
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: result.answer));
+                          TopAlertBar.showSuccess(
+                            context,
+                            'Answer copied to clipboard',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    result.answer,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 15,
+                      height: 1.65,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
           if (result.sources.isNotEmpty) ...[
             const SizedBox(height: 24),
             Text(
               'Sources (${result.sources.length})',
               style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700),
+                color: textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 12),
             ...result.sources.asMap().entries.map(
-                  (entry) => _SourceCard(
-                    index: entry.key + 1,
-                    source: entry.value,
-                    isDark: isDark,
-                    surface: surface,
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  ),
-                ),
+              (entry) => _SourceCard(
+                index: entry.key + 1,
+                source: entry.value,
+                isDark: isDark,
+                surface: surface,
+                textPrimary: textPrimary,
+                textSecondary: textSecondary,
+              ),
+            ),
           ],
 
           const SizedBox(height: 16),
@@ -624,7 +801,8 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -638,7 +816,8 @@ class _DeepSearchScreenState extends State<DeepSearchScreen>
                   style: OutlinedButton.styleFrom(
                     foregroundColor: textSecondary,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -690,11 +869,13 @@ class _SuggestionChip extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: isDark
-                    ? AppColors.darkTextTertiary
-                    : AppColors.lightTextTertiary),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: isDark
+                  ? AppColors.darkTextTertiary
+                  : AppColors.lightTextTertiary,
+            ),
           ],
         ),
       ),
@@ -723,9 +904,12 @@ class _CreditCostBanner extends StatelessWidget {
           const SizedBox(width: 10),
           const Expanded(
             child: Text(
-              'Deep Search costs 5 credits per query.\nQuick Search costs 1 credit.',
+              'Deep Search synthesizes information across your documents with citations.',
               style: TextStyle(
-                  color: AppColors.primary, fontSize: 13, height: 1.5),
+                color: AppColors.primary,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -737,8 +921,10 @@ class _CreditCostBanner extends StatelessWidget {
 class _CreditUsedBadge extends StatelessWidget {
   final int creditsUsed;
   final int creditsRemaining;
-  const _CreditUsedBadge(
-      {required this.creditsUsed, required this.creditsRemaining});
+  const _CreditUsedBadge({
+    required this.creditsUsed,
+    required this.creditsRemaining,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -752,15 +938,19 @@ class _CreditUsedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.check_circle_outline_rounded,
-              color: AppColors.success, size: 16),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            color: AppColors.success,
+            size: 16,
+          ),
           const SizedBox(width: 6),
           Text(
             '$creditsUsed credits used  •  $creditsRemaining remaining',
             style: const TextStyle(
-                color: AppColors.success,
-                fontSize: 12,
-                fontWeight: FontWeight.w600),
+              color: AppColors.success,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -855,9 +1045,10 @@ class _SourceCardState extends State<_SourceCard> {
                       child: Text(
                         '${widget.index}',
                         style: TextStyle(
-                            color: _typeColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800),
+                          color: _typeColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ),
@@ -884,17 +1075,24 @@ class _SourceCardState extends State<_SourceCard> {
                             Text(
                               widget.source.spaceName,
                               style: TextStyle(
-                                  color: widget.textSecondary, fontSize: 11),
+                                color: widget.textSecondary,
+                                fontSize: 11,
+                              ),
                             ),
                             if (widget.source.pageNumber != null) ...[
-                              Text(' · ',
-                                  style: TextStyle(
-                                      color: widget.textSecondary,
-                                      fontSize: 11)),
+                              Text(
+                                ' · ',
+                                style: TextStyle(
+                                  color: widget.textSecondary,
+                                  fontSize: 11,
+                                ),
+                              ),
                               Text(
                                 'Page ${widget.source.pageNumber}',
                                 style: TextStyle(
-                                    color: AppColors.primary, fontSize: 11),
+                                  color: AppColors.primary,
+                                  fontSize: 11,
+                                ),
                               ),
                             ],
                           ],
@@ -904,8 +1102,10 @@ class _SourceCardState extends State<_SourceCard> {
                   ),
                   // Relevance score
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.success.withAlpha(25),
                       borderRadius: BorderRadius.circular(6),
@@ -913,9 +1113,10 @@ class _SourceCardState extends State<_SourceCard> {
                     child: Text(
                       '${(widget.source.score * 100).round()}%',
                       style: const TextStyle(
-                          color: AppColors.success,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700),
+                        color: AppColors.success,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -962,4 +1163,3 @@ class _SourceCardState extends State<_SourceCard> {
     );
   }
 }
-

@@ -1,7 +1,5 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
-
 import 'api_endpoints.dart';
 import '../../data/services/auth_storage.dart';
 
@@ -23,316 +21,205 @@ class ApiResponse {
 
 class ApiClient {
   static final http.Client _client = http.Client();
-
   static void Function()? onUnauthorized;
 
-  static Future<Map<String, String>> _getHeaders({
-    bool isMultipart = false,
-  }) async {
+  // Mutex: only ONE refresh call in flight at a time.
+  // Backend uses token rotation - sending revoked token triggers theft cascade.
+  static bool _isRefreshing = false;
+  static Future<bool>? _refreshFuture;
+
+  static Future<Map<String, String>> _getHeaders({bool isMultipart = false}) async {
     final token = await AuthStorage.getAccessToken();
-
-    final headers = <String, String>{
-      'Accept': 'application/json',
-    };
-
-    if (!isMultipart) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-
+    final headers = <String, String>{'Accept': 'application/json'};
+    if (!isMultipart) headers['Content-Type'] = 'application/json';
+    if (token != null) headers['Authorization'] = 'Bearer $token';
     return headers;
   }
 
+  static Future<Map<String, String>> getHeaders({bool isMultipart = false}) async {
+    return _getHeaders(isMultipart: isMultipart);
+  }
+
+  /// Hosted backends on free tiers (e.g. Render) sleep when idle and need up to
+  /// ~60s to cold start. Wait generously and retry on gateway errors / timeouts.
+  static const Duration _requestTimeout = Duration(seconds: 60);
+  static const int _maxAttempts = 3;
+
+  static Future<http.Response> _withRetry(
+    Future<http.Response> Function(Map<String, String> headers) send,
+  ) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      try {
+        final headers = await _getHeaders();
+        final response = await send(headers).timeout(_requestTimeout);
+        final isGatewayError = response.statusCode == 502 ||
+            response.statusCode == 503 ||
+            response.statusCode == 504;
+        if (isGatewayError && attempt < _maxAttempts) {
+          await Future.delayed(Duration(seconds: 3 * attempt));
+          continue;
+        }
+        return response;
+      } catch (e) {
+        lastError = e;
+        if (attempt < _maxAttempts) {
+          await Future.delayed(Duration(seconds: 3 * attempt));
+        }
+      }
+    }
+    throw lastError ?? Exception('Request failed');
+  }
+
+  /// Fire-and-forget ping to wake a sleeping backend as soon as the app opens.
+  static Future<void> wakeUpServer() async {
+    try {
+      final base = ApiEndpoints.baseUrl.replaceAll(RegExp(r'/api/v\d+/?$'), '');
+      await _client.get(Uri.parse('$base/health')).timeout(const Duration(seconds: 70));
+    } catch (_) {}
+  }
+
+  static const _networkError = 'Network error: Please check your connection';
+
   static Future<ApiResponse> get(String url) async {
     try {
-      final headers = await _getHeaders();
-
-      final response = await _client.get(
-        Uri.parse(url),
-        headers: headers,
-      );
-
-      return _handleResponse(response, () => get(url));
-    } catch (e, stackTrace) {
-      _logNetworkError('GET', url, e, stackTrace);
-
-      return ApiResponse(
-        success: false,
-        message: 'Network error (${e.runtimeType}): $e',
-        statusCode: 0,
-      );
+      final response = await _withRetry((h) => _client.get(Uri.parse(url), headers: h));
+      return await _handleResponse(response, () => get(url));
+    } catch (e) {
+      return ApiResponse(success: false, message: _networkError, statusCode: 0);
     }
   }
 
-  static Future<ApiResponse> post(
-    String url, {
-    Map<String, dynamic>? body,
-  }) async {
+  static Future<ApiResponse> post(String url, {Map<String, dynamic>? body}) async {
     try {
-      final headers = await _getHeaders();
-
-      final response = await _client.post(
-        Uri.parse(url),
-        headers: headers,
-        body: body != null ? jsonEncode(body) : null,
-      );
-
-      return _handleResponse(
-        response,
-        () => post(url, body: body),
-      );
-    } catch (e, stackTrace) {
-      _logNetworkError('POST', url, e, stackTrace);
-
-      return ApiResponse(
-        success: false,
-        message: 'Network error (${e.runtimeType}): $e',
-        statusCode: 0,
-      );
+      final response = await _withRetry((h) => _client.post(Uri.parse(url), headers: h, body: body != null ? jsonEncode(body) : null));
+      return await _handleResponse(response, () => post(url, body: body));
+    } catch (e) {
+      return ApiResponse(success: false, message: _networkError, statusCode: 0);
     }
   }
 
-  static Future<ApiResponse> patch(
-    String url, {
-    Map<String, dynamic>? body,
-  }) async {
+  static Future<ApiResponse> patch(String url, {Map<String, dynamic>? body}) async {
     try {
-      final headers = await _getHeaders();
-
-      final response = await _client.patch(
-        Uri.parse(url),
-        headers: headers,
-        body: body != null ? jsonEncode(body) : null,
-      );
-
-      return _handleResponse(
-        response,
-        () => patch(url, body: body),
-      );
-    } catch (e, stackTrace) {
-      _logNetworkError('PATCH', url, e, stackTrace);
-
-      return ApiResponse(
-        success: false,
-        message: 'Network error (${e.runtimeType}): $e',
-        statusCode: 0,
-      );
+      final response = await _withRetry((h) => _client.patch(Uri.parse(url), headers: h, body: body != null ? jsonEncode(body) : null));
+      return await _handleResponse(response, () => patch(url, body: body));
+    } catch (e) {
+      return ApiResponse(success: false, message: _networkError, statusCode: 0);
     }
   }
 
   static Future<ApiResponse> delete(String url) async {
     try {
-      final headers = await _getHeaders();
-
-      final response = await _client.delete(
-        Uri.parse(url),
-        headers: headers,
-      );
-
-      return _handleResponse(response, () => delete(url));
-    } catch (e, stackTrace) {
-      _logNetworkError('DELETE', url, e, stackTrace);
-
-      return ApiResponse(
-        success: false,
-        message: 'Network error (${e.runtimeType}): $e',
-        statusCode: 0,
-      );
+      final response = await _withRetry((h) => _client.delete(Uri.parse(url), headers: h));
+      return await _handleResponse(response, () => delete(url));
+    } catch (e) {
+      return ApiResponse(success: false, message: _networkError, statusCode: 0);
     }
   }
+
 
   static Future<ApiResponse> uploadFile({
     required String url,
     required List<int> bytes,
     required String filename,
     String fieldName = 'file',
+    Map<String, String>? fields,
   }) async {
     try {
       final token = await AuthStorage.getAccessToken();
-      final uri = Uri.parse(url);
-
-      final request = http.MultipartRequest('POST', uri);
-
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
-
-      if (token != null && token.isNotEmpty) {
-        request.headers['Authorization'] = 'Bearer $token';
-      }
-
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          fieldName,
-          bytes,
-          filename: filename,
-        ),
-      );
-
+      if (fields != null) request.fields.addAll(fields);
+      request.files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-
       return _parseJsonResponse(response);
-    } catch (e, stackTrace) {
-      _logNetworkError('UPLOAD', url, e, stackTrace);
-
-      return ApiResponse(
-        success: false,
-        message: 'File upload failed (${e.runtimeType}): $e',
-        statusCode: 0,
-      );
+    } catch (e) {
+      return ApiResponse(success: false, message: 'Failed to upload file: $e', statusCode: 0);
     }
   }
 
-  static Future<ApiResponse> _handleResponse(
-    http.Response response,
-    Future<ApiResponse> Function() retryRequest,
-  ) async {
+  static Future<ApiResponse> _handleResponse(http.Response response, Future<ApiResponse> Function() retryRequest) async {
     if (response.statusCode == 401) {
-      final refreshed = await _tryRefreshToken();
-
-      if (refreshed) {
-        return retryRequest();
-      }
-
+      final refreshed = await _refreshTokenOnce();
+      if (refreshed) return retryRequest();
       onUnauthorized?.call();
     }
-
     return _parseJsonResponse(response);
   }
 
   static ApiResponse _parseJsonResponse(http.Response response) {
     try {
       final dynamic body = jsonDecode(response.body);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
-        return ApiResponse(
-          success: body is Map
-              ? (body['success'] ?? true) == true
-              : true,
-          data: body is Map
-              ? (body['data'] ?? body)
-              : body,
-          message: body is Map ? body['message']?.toString() : null,
-          statusCode: response.statusCode,
-        );
-      }
-
-      final dynamic errorObj =
-          body is Map ? body['error'] : null;
-
-      final String message;
-
-      if (errorObj is Map && errorObj['message'] != null) {
-        message = errorObj['message'].toString();
-      } else if (body is Map && body['message'] != null) {
-        message = body['message'].toString();
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: body['success'] ?? true, data: body['data'] ?? body, message: body['message'], statusCode: response.statusCode);
       } else {
-        message = 'Request failed (${response.statusCode})';
+        final errorObj = body['error'];
+        final message = errorObj != null && errorObj['message'] != null ? errorObj['message'] : (body['message'] ?? 'An error occurred');
+        final code = errorObj != null ? errorObj['code'] : null;
+        return ApiResponse(success: false, message: message, errorCode: code, statusCode: response.statusCode);
       }
-
-      final String? code =
-          errorObj is Map && errorObj['code'] != null
-              ? errorObj['code'].toString()
-              : null;
-
-      return ApiResponse(
-        success: false,
-        message: message,
-        errorCode: code,
-        statusCode: response.statusCode,
-      );
-    } catch (e, stackTrace) {
-      _logNetworkError(
-        'PARSE RESPONSE',
-        'HTTP ${response.statusCode}',
-        e,
-        stackTrace,
-      );
-
-      return ApiResponse(
-        success: response.statusCode >= 200 &&
-            response.statusCode < 300,
-        message: response.statusCode >= 400
-            ? 'Server error (${response.statusCode})'
-            : 'Invalid response received from server',
-        statusCode: response.statusCode,
-      );
+    } catch (_) {
+      return ApiResponse(success: response.statusCode >= 200 && response.statusCode < 300, message: response.statusCode >= 400 ? 'Server error (${response.statusCode})' : null, statusCode: response.statusCode);
     }
+  }
+
+  static Future<bool> refreshToken() => _refreshTokenOnce();
+
+  static Future<bool> _refreshTokenOnce() {
+    if (_isRefreshing && _refreshFuture != null) return _refreshFuture!;
+    _isRefreshing = true;
+    _refreshFuture = _tryRefreshToken().whenComplete(() {
+      _isRefreshing = false;
+      _refreshFuture = null;
+    });
+    return _refreshFuture!;
   }
 
   static Future<bool> _tryRefreshToken() async {
     try {
-      final refreshToken = await AuthStorage.getRefreshToken();
+      String? refreshToken = await AuthStorage.getRefreshToken();
+      if (refreshToken == null || refreshToken.isEmpty) {
+        // Fallback to saved account's refresh token if active token was somehow lost
+        final saved = await AuthStorage.getSavedAccounts();
+        final acc = saved.firstWhere(
+          (a) => a['refreshToken'] != null && a['refreshToken'].toString().isNotEmpty,
+          orElse: () => {},
+        );
+        if (acc.isNotEmpty) {
+          refreshToken = acc['refreshToken'].toString();
+        }
+      }
 
       if (refreshToken == null || refreshToken.isEmpty) {
         return false;
       }
 
-      final response = await _client.post(
+      final res = await _client.post(
         Uri.parse(ApiEndpoints.refresh),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'refreshToken': refreshToken,
-        }),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
       );
 
-      if (response.statusCode == 200) {
-        final dynamic decoded = jsonDecode(response.body);
-
-        if (decoded is! Map) {
-          await AuthStorage.clearAll();
-          return false;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final tokens = data['data']?['tokens'] ?? data['tokens'];
+        if (tokens != null) {
+          await AuthStorage.saveTokens(
+            accessToken: tokens['accessToken'],
+            refreshToken: tokens['refreshToken'] ?? refreshToken,
+          );
+          return true;
         }
-
-        final dynamic data = decoded['data'];
-        final dynamic tokens =
-            data is Map ? data['tokens'] : null;
-
-        if (tokens is! Map ||
-            tokens['accessToken'] == null ||
-            tokens['refreshToken'] == null) {
-          await AuthStorage.clearAll();
-          return false;
-        }
-
-        await AuthStorage.saveTokens(
-          accessToken: tokens['accessToken'].toString(),
-          refreshToken: tokens['refreshToken'].toString(),
-        );
-
-        return true;
+      } else if (res.statusCode == 401) {
+        // Only invalidate if the backend explicitly rejected the refresh token as expired or invalid
+        await AuthStorage.clearAll();
+        return false;
       }
-    } catch (e, stackTrace) {
-      _logNetworkError(
-        'TOKEN REFRESH',
-        ApiEndpoints.refresh,
-        e,
-        stackTrace,
-      );
+    } catch (_) {
+      // Network error / offline: do NOT clear stored tokens!
     }
-
-    await AuthStorage.clearAll();
     return false;
-  }
-
-  static void _logNetworkError(
-    String method,
-    String url,
-    Object error,
-    StackTrace stackTrace,
-  ) {
-    print('========== API NETWORK ERROR ==========');
-    print('Method: $method');
-    print('URL: $url');
-    print('Error type: ${error.runtimeType}');
-    print('Error: $error');
-    print('Stack trace: $stackTrace');
-    print('=======================================');
   }
 }

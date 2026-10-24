@@ -1,4 +1,6 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
@@ -7,6 +9,15 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
     scaffoldBackgroundColor: AppColors.darkBackground,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primary,
       secondary: AppColors.accent,
@@ -16,39 +27,43 @@ class AppTheme {
       onSecondary: Colors.white,
       onSurface: AppColors.darkTextPrimary,
     ),
-    textTheme: GoogleFonts.plusJakartaSansTextTheme(
-      ThemeData.dark().textTheme,
-    ).copyWith(
-      displayLarge: GoogleFonts.plusJakartaSans(
-        color: AppColors.darkTextPrimary,
-        fontWeight: FontWeight.w800,
-        fontSize: 32,
-        letterSpacing: -0.5,
-      ),
-      displayMedium: GoogleFonts.plusJakartaSans(
-        color: AppColors.darkTextPrimary,
-        fontWeight: FontWeight.w700,
-        fontSize: 24,
-        letterSpacing: -0.3,
-      ),
-      titleLarge: GoogleFonts.plusJakartaSans(
-        color: AppColors.darkTextPrimary,
-        fontWeight: FontWeight.w600,
-        fontSize: 18,
-      ),
-      bodyLarge: GoogleFonts.inter(
-        color: AppColors.darkTextPrimary,
-        fontSize: 15,
-        height: 1.5,
-      ),
-      bodyMedium: GoogleFonts.inter(
-        color: AppColors.darkTextSecondary,
-        fontSize: 13,
-        height: 1.4,
-      ),
-    ),
+    textTheme: GoogleFonts.plusJakartaSansTextTheme(ThemeData.dark().textTheme)
+        .copyWith(
+          displayLarge: GoogleFonts.plusJakartaSans(
+            color: AppColors.darkTextPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 32,
+            letterSpacing: -0.5,
+          ),
+          displayMedium: GoogleFonts.plusJakartaSans(
+            color: AppColors.darkTextPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: 24,
+            letterSpacing: -0.3,
+          ),
+          titleLarge: GoogleFonts.plusJakartaSans(
+            color: AppColors.darkTextPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+          bodyLarge: GoogleFonts.inter(
+            color: AppColors.darkTextPrimary,
+            fontSize: 15,
+            height: 1.5,
+          ),
+          bodyMedium: GoogleFonts.inter(
+            color: AppColors.darkTextSecondary,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
     appBarTheme: AppBarTheme(
       backgroundColor: AppColors.darkBackground.withOpacity(0.8),
+      systemOverlayStyle: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
       elevation: 0,
       centerTitle: false,
       titleTextStyle: GoogleFonts.plusJakartaSans(
@@ -69,8 +84,14 @@ class AppTheme {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.darkSurface,
-      hintStyle: GoogleFonts.inter(color: AppColors.darkTextTertiary, fontSize: 14),
-      labelStyle: GoogleFonts.inter(color: AppColors.darkTextSecondary, fontSize: 14),
+      hintStyle: GoogleFonts.inter(
+        color: AppColors.darkTextTertiary,
+        fontSize: 14,
+      ),
+      labelStyle: GoogleFonts.inter(
+        color: AppColors.darkTextSecondary,
+        fontSize: 14,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppColors.darkBorder),
@@ -105,12 +126,60 @@ class AppTheme {
       type: BottomNavigationBarType.fixed,
       elevation: 8,
     ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: AppColors.darkSurface,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.darkBorder, width: 1),
+      ),
+      textStyle: GoogleFonts.inter(
+        color: AppColors.darkTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.darkSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: AppColors.darkBorder, width: 1),
+      ),
+      titleTextStyle: GoogleFonts.plusJakartaSans(
+        color: AppColors.darkTextPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+      contentTextStyle: GoogleFonts.inter(
+        color: AppColors.darkTextSecondary,
+        fontSize: 14,
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: AppColors.darkSurface,
+      modalBackgroundColor: AppColors.darkSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
   );
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     scaffoldBackgroundColor: AppColors.lightBackground,
+    cardColor: AppColors.lightCard,
+    canvasColor: AppColors.lightBackground,
+    iconTheme: const IconThemeData(color: AppColors.lightTextPrimary),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     colorScheme: const ColorScheme.light(
       primary: AppColors.primary,
       secondary: AppColors.accent,
@@ -120,39 +189,44 @@ class AppTheme {
       onSecondary: Colors.white,
       onSurface: AppColors.lightTextPrimary,
     ),
-    textTheme: GoogleFonts.plusJakartaSansTextTheme(
-      ThemeData.light().textTheme,
-    ).copyWith(
-      displayLarge: GoogleFonts.plusJakartaSans(
-        color: AppColors.lightTextPrimary,
-        fontWeight: FontWeight.w800,
-        fontSize: 32,
-        letterSpacing: -0.5,
-      ),
-      displayMedium: GoogleFonts.plusJakartaSans(
-        color: AppColors.lightTextPrimary,
-        fontWeight: FontWeight.w700,
-        fontSize: 24,
-        letterSpacing: -0.3,
-      ),
-      titleLarge: GoogleFonts.plusJakartaSans(
-        color: AppColors.lightTextPrimary,
-        fontWeight: FontWeight.w600,
-        fontSize: 18,
-      ),
-      bodyLarge: GoogleFonts.inter(
-        color: AppColors.lightTextPrimary,
-        fontSize: 15,
-        height: 1.5,
-      ),
-      bodyMedium: GoogleFonts.inter(
-        color: AppColors.lightTextSecondary,
-        fontSize: 13,
-        height: 1.4,
-      ),
-    ),
+    textTheme: GoogleFonts.plusJakartaSansTextTheme(ThemeData.light().textTheme)
+        .copyWith(
+          displayLarge: GoogleFonts.plusJakartaSans(
+            color: AppColors.lightTextPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 32,
+            letterSpacing: -0.5,
+          ),
+          displayMedium: GoogleFonts.plusJakartaSans(
+            color: AppColors.lightTextPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: 24,
+            letterSpacing: -0.3,
+          ),
+          titleLarge: GoogleFonts.plusJakartaSans(
+            color: AppColors.lightTextPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+          bodyLarge: GoogleFonts.inter(
+            color: AppColors.lightTextPrimary,
+            fontSize: 15,
+            height: 1.5,
+          ),
+          bodyMedium: GoogleFonts.inter(
+            color: AppColors.lightTextSecondary,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.lightBackground,
+      surfaceTintColor: Colors.transparent,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
       elevation: 0,
       centerTitle: false,
       titleTextStyle: TextStyle(
@@ -162,6 +236,7 @@ class AppTheme {
       ),
       iconTheme: IconThemeData(color: AppColors.lightTextPrimary),
     ),
+    dividerColor: AppColors.lightBorder,
     cardTheme: CardThemeData(
       color: AppColors.lightCard,
       elevation: 0,
@@ -173,8 +248,14 @@ class AppTheme {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
-      hintStyle: GoogleFonts.inter(color: AppColors.lightTextTertiary, fontSize: 14),
-      labelStyle: GoogleFonts.inter(color: AppColors.lightTextSecondary, fontSize: 14),
+      hintStyle: GoogleFonts.inter(
+        color: AppColors.lightTextTertiary,
+        fontSize: 14,
+      ),
+      labelStyle: GoogleFonts.inter(
+        color: AppColors.lightTextSecondary,
+        fontSize: 14,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppColors.lightBorder),
@@ -208,6 +289,42 @@ class AppTheme {
       unselectedItemColor: AppColors.lightTextTertiary,
       type: BottomNavigationBarType.fixed,
       elevation: 8,
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: AppColors.lightSurface,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.lightBorder, width: 1),
+      ),
+      textStyle: GoogleFonts.inter(
+        color: AppColors.lightTextPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.lightSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: AppColors.lightBorder, width: 1),
+      ),
+      titleTextStyle: GoogleFonts.plusJakartaSans(
+        color: AppColors.lightTextPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+      contentTextStyle: GoogleFonts.inter(
+        color: AppColors.lightTextSecondary,
+        fontSize: 14,
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: AppColors.lightSurface,
+      modalBackgroundColor: AppColors.lightSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
     ),
   );
 }

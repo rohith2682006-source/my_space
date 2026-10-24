@@ -9,10 +9,24 @@ class SpacesProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  final Set<String> _unlockedSpaceIds = {};
+
   List<SpaceModel> get spaces => _spaces;
   SpaceModel? get activeSpace => _activeSpace;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  bool isSpaceUnlocked(String spaceId) => _unlockedSpaceIds.contains(spaceId);
+
+  void unlockSpace(String spaceId) {
+    _unlockedSpaceIds.add(spaceId);
+    notifyListeners();
+  }
+
+  void lockSpace(String spaceId) {
+    _unlockedSpaceIds.remove(spaceId);
+    notifyListeners();
+  }
 
   Future<void> fetchSpaces({String? search}) async {
     _isLoading = true;
@@ -30,7 +44,9 @@ class SpacesProvider extends ChangeNotifier {
     if (response.success && response.data != null) {
       final List<dynamic> list = response.data is List
           ? response.data
-          : (response.data is Map && response.data['data'] is List ? response.data['data'] : []);
+          : (response.data is Map && response.data['data'] is List
+                ? response.data['data']
+                : []);
       _spaces = list.map((item) => SpaceModel.fromJson(item)).toList();
     } else {
       _errorMessage = response.message ?? 'Failed to load Spaces';
@@ -53,12 +69,13 @@ class SpacesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> createSpace({
+  Future<SpaceModel?> createSpace({
     required String name,
     String? description,
     String icon = '📁',
     String color = '#6366F1',
     bool isPrivate = true,
+    String? password,
   }) async {
     _isLoading = true;
     _errorMessage = null;
@@ -70,14 +87,14 @@ class SpacesProvider extends ChangeNotifier {
       'color': color,
       'isPrivate': isPrivate,
     };
+    if (isPrivate && password != null && password.isNotEmpty) {
+      body['password'] = password;
+    }
     if (description != null && description.trim().isNotEmpty) {
       body['description'] = description.trim();
     }
 
-    final response = await ApiClient.post(
-      ApiEndpoints.spaces,
-      body: body,
-    );
+    final response = await ApiClient.post(ApiEndpoints.spaces, body: body);
 
     _isLoading = false;
 
@@ -85,11 +102,11 @@ class SpacesProvider extends ChangeNotifier {
       final newSpace = SpaceModel.fromJson(response.data);
       _spaces.insert(0, newSpace);
       notifyListeners();
-      return true;
+      return newSpace;
     } else {
       _errorMessage = response.message ?? 'Failed to create Space';
       notifyListeners();
-      return false;
+      return null;
     }
   }
 
@@ -99,31 +116,58 @@ class SpacesProvider extends ChangeNotifier {
     String? description,
     String? icon,
     String? color,
+    String? password,
   }) async {
     final Map<String, dynamic> body = {};
     if (name != null) body['name'] = name.trim();
     if (description != null) body['description'] = description.trim();
     if (icon != null) body['icon'] = icon;
     if (color != null) body['color'] = color;
+    if (password != null) body['password'] = password;
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
 
     final response = await ApiClient.patch(
       ApiEndpoints.space(spaceId),
       body: body,
+    ).timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => ApiResponse(
+        success: false,
+        message: 'Request timed out. Please try again.',
+        statusCode: 0,
+      ),
     );
 
-    if (response.success && response.data != null) {
-      final updated = SpaceModel.fromJson(response.data);
-      final idx = _spaces.indexWhere((s) => s.id == spaceId);
-      if (idx != -1) {
-        _spaces[idx] = updated;
-      }
-      if (_activeSpace?.id == spaceId) {
-        _activeSpace = updated;
+    _isLoading = false;
+
+    if (response.success) {
+      if (response.data != null) {
+        try {
+          final Map<String, dynamic> dataMap = response.data is Map<String, dynamic>
+              ? response.data as Map<String, dynamic>
+              : Map<String, dynamic>.from(response.data as Map);
+          final updated = SpaceModel.fromJson(dataMap);
+          final idx = _spaces.indexWhere((s) => s.id == spaceId);
+          if (idx != -1) {
+            _spaces[idx] = updated;
+          }
+          if (_activeSpace?.id == spaceId) {
+            _activeSpace = updated;
+          }
+        } catch (_) {
+          // Model deserialization fallback: server update succeeded
+        }
       }
       notifyListeners();
       return true;
+    } else {
+      _errorMessage = response.message ?? 'Failed to update space';
+      notifyListeners();
+      return false;
     }
-    return false;
   }
 
   Future<bool> deleteSpace(String spaceId) async {
@@ -137,5 +181,36 @@ class SpacesProvider extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  Future<bool> verifySpacePassword(String spaceId, String password) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final response =
+        await ApiClient.post(
+          '${ApiEndpoints.spaces}/$spaceId/verify-password',
+          body: {'password': password},
+        ).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => ApiResponse(
+            success: false,
+            message: 'Verification timed out. Please try again.',
+            statusCode: 0,
+          ),
+        );
+
+    _isLoading = false;
+
+    if (response.success) {
+      _unlockedSpaceIds.add(spaceId);
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = response.message ?? 'Incorrect password';
+      notifyListeners();
+      return false;
+    }
   }
 }

@@ -1,20 +1,22 @@
 class ApiEndpoints {
-  // Production backend on Render.
-  // Override using --dart-define=API_BASE_URL=... when needed.
+  // Override with --dart-define=API_BASE_URL=... for emulators and devices.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue:
-        'https://my-space-backend-wbdw.onrender.com/api/v1',
+    defaultValue: 'http://localhost:3000/api/v1',
   );
 
   // Auth
   static const String register = '$baseUrl/auth/register';
   static const String login = '$baseUrl/auth/login';
+  static const String googleLogin = '$baseUrl/auth/google';
   static const String refresh = '$baseUrl/auth/refresh';
   static const String me = '$baseUrl/auth/me';
   static const String logout = '$baseUrl/auth/logout';
   static const String logoutAll = '$baseUrl/auth/logout-all';
   static const String changePassword = '$baseUrl/auth/change-password';
+  static const String forgotPassword = '$baseUrl/auth/forgot-password';
+  static const String verifyOtp = '$baseUrl/auth/verify-otp';
+  static const String resetPassword = '$baseUrl/auth/reset-password';
 
   // Spaces
   static const String spaces = '$baseUrl/spaces';
@@ -38,12 +40,25 @@ class ApiEndpoints {
   static String fileRestore(String id) => '$baseUrl/files/$id/restore';
   static String filePermanent(String id) => '$baseUrl/files/$id/permanent';
 
+  // File Version History
+  static String fileVersions(String id) => '$baseUrl/files/$id/versions';
+  static String restoreVersion(String fileId, String versionId) =>
+      '$baseUrl/files/$fileId/versions/$versionId/restore';
+
   // Discovery
   static const String search = '$baseUrl/search';
   static const String recent = '$baseUrl/recent';
   static const String favorites = '$baseUrl/favorites';
   static const String trash = '$baseUrl/trash';
   static const String storage = '$baseUrl/storage';
+
+  // Offline Cache (local only - no backend endpoint needed)
+  // Upload Requests (Request Links)
+  static const String uploadRequests = '$baseUrl/upload-requests';
+  static String uploadRequestItem(String id) => '$baseUrl/upload-requests/$id';
+
+  // Vault Auth
+  static String vaultVerify(String spaceId) => '$baseUrl/spaces/$spaceId/vault/verify';
 
   // Sharing
   static const String shareLinks = '$baseUrl/share';
@@ -62,8 +77,11 @@ class ApiEndpoints {
 
   // AI
   static const String aiChat = '$baseUrl/ai/chat';
+  static const String aiChatStream = '$baseUrl/ai/chat/stream';
+  static const String aiVision = '$baseUrl/ai/vision';
   static const String aiDeepSearch = '$baseUrl/ai/deep-search';
-  static const String aiQuickSearch = '$baseUrl/ai/quick-search';
+  static const String aiDeepSearchStream = '$baseUrl/ai/deep-search/stream';
+  static const String aiFeedback = '$baseUrl/ai/feedback';
   static const String aiCreditsBalance = '$baseUrl/ai/credits/balance';
   static const String aiCreditsHistory = '$baseUrl/ai/credits/history';
   static const String aiUsageStats = '$baseUrl/ai/usage/stats';
@@ -71,6 +89,8 @@ class ApiEndpoints {
       '$baseUrl/ai/documents/reindex-existing';
   static String aiReindexDocument(String id) =>
       '$baseUrl/ai/documents/$id/reindex';
+  static String aiSpaceReindexAll(String spaceId) =>
+      '$baseUrl/ai/spaces/$spaceId/reindex-all';
   static String aiDocumentIndexStatus(String id) =>
       '$baseUrl/ai/documents/$id/index-status';
 

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.spaces.app" "\0"
-            VALUE "FileDescription", "spaces_app" "\0"
+            VALUE "CompanyName", "Spaces App" "\0"
+            VALUE "FileDescription", "Spaces" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "spaces_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.spaces.app. All rights reserved." "\0"
+            VALUE "InternalName", "Spaces" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Spaces App. All rights reserved." "\0"
             VALUE "OriginalFilename", "spaces_app.exe" "\0"
-            VALUE "ProductName", "spaces_app" "\0"
+            VALUE "ProductName", "Spaces" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

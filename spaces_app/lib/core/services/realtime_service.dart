@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_endpoints.dart';
+import '../api/api_client.dart';
 import '../../data/services/auth_storage.dart';
 
 class RealtimeEvent {
@@ -71,6 +72,9 @@ class RealtimeService {
 
       if (streamedResponse.statusCode != 200) {
         debugPrint('[Realtime] HTTP error: ${streamedResponse.statusCode}');
+        if (streamedResponse.statusCode == 401) {
+          await ApiClient.refreshToken();
+        }
         _scheduleReconnect();
         return;
       }

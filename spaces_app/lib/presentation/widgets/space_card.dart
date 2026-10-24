@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import '../../presentation/widgets/top_alert_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/file_helper.dart';
@@ -32,29 +32,32 @@ class SpaceCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final cardColor = _parseColor(space.color);
+    final width = MediaQuery.sizeOf(context).width;
+    final isNarrow = width < 480;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkCard : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
+    return RepaintBoundary(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkCard : AppColors.lightCard,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
               color: isDark
-                  ? Colors.black.withValues(alpha: 0.2)
-                  : Colors.black.withValues(alpha: 0.04),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
+                  ? Colors.white.withOpacity(0.12)
+                  : AppColors.lightBorder,
+              width: 1,
             ),
-          ],
-        ),
-        padding: const EdgeInsets.all(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.all(isNarrow ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -65,11 +68,11 @@ class SpaceCard extends StatelessWidget {
               children: [
                 // Space Icon in colored container
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: isNarrow ? 44 : 54,
+                  height: isNarrow ? 44 : 54,
                   decoration: BoxDecoration(
                     color: cardColor.withValues(alpha: isDark ? 0.2 : 0.12),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: cardColor.withValues(alpha: 0.4),
                       width: 1,
@@ -78,66 +81,83 @@ class SpaceCard extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     space.icon,
-                    style: const TextStyle(fontSize: 26),
+                    style: TextStyle(fontSize: isNarrow ? 22 : 28),
                   ),
                 ),
                 // Privacy / More
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!space.isPrivate)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Shared',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.accent,
+                Flexible(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!space.isPrivate) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Shared',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.accent,
+                            ),
                           ),
                         ),
-                      ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz_rounded, size: 20),
-                      tooltip: 'Space Options',
-                      padding: const EdgeInsets.all(4),
-                      constraints: const BoxConstraints(),
-                      onSelected: (val) {
-                        if (val == 'share') {
-                          onMoreTap?.call();
-                        } else if (val == 'delete') {
-                          _confirmDelete(context);
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem(
-                          value: 'share',
-                          child: Row(
-                            children: [
-                              Icon(Icons.share_outlined, size: 18),
-                              SizedBox(width: 10),
-                              Text('Share Space'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 18),
-                              SizedBox(width: 10),
-                              Text('Delete Space', style: TextStyle(color: AppColors.error)),
-                            ],
-                          ),
-                        ),
+                        const SizedBox(width: 2),
                       ],
-                    ),
-                  ],
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_horiz_rounded,
+                          size: 18,
+                          color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                        ),
+                        tooltip: 'Space Options',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onSelected: (val) {
+                          if (val == 'share') {
+                            onMoreTap?.call();
+                          } else if (val == 'delete') {
+                            _confirmDelete(context);
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.share_outlined,
+                                  size: 18,
+                                  color: isDark ? Colors.white70 : AppColors.lightTextPrimary,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Share Space',
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 18),
+                                SizedBox(width: 10),
+                                Text('Delete Space', style: TextStyle(color: AppColors.error)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -147,10 +167,11 @@ class SpaceCard extends StatelessWidget {
               space.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 17,
+              style: TextStyle(
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,
+                color: isDark ? Colors.white : AppColors.lightTextPrimary,
               ),
             ),
             const SizedBox(height: 4),
@@ -161,7 +182,7 @@ class SpaceCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                 ),
               ),
@@ -170,9 +191,9 @@ class SpaceCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : const Color(0xFFF1F5F9),
+                    color: isDark ? AppColors.darkSurface : AppColors.lightBackground,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
@@ -180,14 +201,14 @@ class SpaceCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.description_outlined,
-                        size: 13,
+                        size: 14,
                         color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       Text(
                         '${space.fileCount} ${space.fileCount == 1 ? 'file' : 'files'}',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                         ),
@@ -199,7 +220,7 @@ class SpaceCard extends StatelessWidget {
                 Text(
                   FileHelper.timeAgo(space.lastActivityAt),
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
                   ),
                 ),
@@ -208,8 +229,9 @@ class SpaceCard extends StatelessWidget {
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, duration: 300.ms);
-  }
+    ),
+  );
+}
 
   void _confirmDelete(BuildContext context) {
     showDialog(
@@ -249,14 +271,7 @@ class SpaceCard extends StatelessWidget {
               final success = await Provider.of<SpacesProvider>(context, listen: false)
                   .deleteSpace(space.id);
               if (context.mounted && success) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Space "${space.name}" deleted'),
-                    backgroundColor: AppColors.error,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                );
+                TopAlertBar.showSuccess(context, 'Space "${space.name}" deleted');
               }
             },
             child: const Text('Delete Permanently'),

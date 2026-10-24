@@ -1,14 +1,17 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import {
   ConflictError,
   UnauthorizedError,
   NotFoundError,
+  AppError,
 } from '../../utils/errors';
 import { JwtPayload } from '../../middleware/auth';
+import { EmailService } from '../../services/email.service';
 import type {
   RegisterInput,
   LoginInput,
@@ -89,12 +92,16 @@ export class AuthService {
    * Authenticate a user with email and password
    */
   async login(input: LoginInput): Promise<AuthResponse> {
-    // Find user — use timing-safe approach
-    const user = await prisma.user.findUnique({
-      where: { email: input.email },
+    // Find user — use timing-safe approach with normalized email
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail },
+        deletedAt: null,
+      },
     });
 
-    if (!user || user.deletedAt) {
+    if (!user) {
       // Use bcrypt.hash to prevent timing attacks (same execution time)
       await bcrypt.hash('dummy', env.BCRYPT_SALT_ROUNDS);
       throw new UnauthorizedError('Invalid email or password');
@@ -106,11 +113,22 @@ export class AuthService {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Update last login
+    // Update last login and prune old revoked/expired tokens
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId: user.id,
+        OR: [
+          { revokedAt: { lt: sevenDaysAgo } },
+          { expiresAt: { lt: new Date() } },
+        ],
+      },
+    }).catch(() => {});
 
     // Generate tokens
     const tokens = await this.generateTokens({
@@ -133,8 +151,82 @@ export class AuthService {
   }
 
   /**
+   * Authenticate a user with Google ID Token
+   */
+  async googleLogin(idToken: string, isSignUp: boolean = false): Promise<AuthResponse> {
+    const client = new OAuth2Client();
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken,
+        // audience: env.GOOGLE_CLIENT_ID, // Specify the CLIENT_ID of the app that accesses the backend
+      });
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new UnauthorizedError('Invalid Google token payload');
+      }
+
+      const email = payload.email.toLowerCase();
+      
+      let user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user) {
+        if (!isSignUp) {
+          throw new UnauthorizedError('Account does not exist. Please sign up first.');
+        }
+        // Register the user
+        user = await prisma.user.create({
+          data: {
+            email: email,
+            passwordHash: '', // No password for google accounts
+            firstName: payload.given_name || 'User',
+            lastName: payload.family_name || '',
+            avatarUrl: payload.picture || null,
+            isVerified: true,
+            storageUsage: {
+              create: {
+                totalUsed: BigInt(0),
+              },
+            },
+          },
+        });
+      } else if (isSignUp) {
+         throw new UnauthorizedError('Account already exists. Please sign in instead.');
+      } else if (user.deletedAt) {
+        throw new UnauthorizedError('Account has been deleted');
+      }
+
+      // Generate tokens
+      const tokens = await this.generateTokens({
+        userId: user.id,
+        email: user.email,
+        isAdmin: user.isAdmin,
+      });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatarUrl: user.avatarUrl,
+          isVerified: user.isVerified,
+        },
+        tokens,
+      };
+    } catch (error) {
+      console.error('Google login error:', error);
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new UnauthorizedError('Invalid Google token');
+    }
+  }
+
+  /**
    * Refresh access token using a valid refresh token
-   * Implements refresh token rotation for security
+   * Implements safe refresh token rotation
    */
   async refreshAccessToken(refreshToken: string): Promise<AuthTokens> {
     // Find the refresh token
@@ -144,64 +236,56 @@ export class AuthService {
     });
 
     if (!storedToken) {
-      throw new UnauthorizedError('Invalid refresh token');
+      throw new UnauthorizedError('Session expired. Please sign in again.');
     }
 
-    // Check if revoked
-    if (storedToken.revokedAt) {
-      // Potential token theft — revoke ALL tokens for this user
-      await prisma.refreshToken.updateMany({
-        where: { userId: storedToken.userId },
-        data: { revokedAt: new Date() },
-      });
-      throw new UnauthorizedError('Refresh token has been revoked. Please login again.');
+    if (storedToken.user.deletedAt) {
+      throw new UnauthorizedError('Account has been deleted.');
     }
 
     // Check if expired
     if (storedToken.expiresAt < new Date()) {
-      throw new UnauthorizedError('Refresh token has expired. Please login again.');
+      await prisma.refreshToken.delete({ where: { id: storedToken.id } }).catch(() => {});
+      throw new UnauthorizedError('Session expired. Please sign in again.');
     }
 
-    // Revoke old token (rotation)
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revokedAt: new Date() },
-    });
-
-    // Generate new tokens
+    // Generate new 90-day tokens
     const tokens = await this.generateTokens({
       userId: storedToken.user.id,
       email: storedToken.user.email,
       isAdmin: storedToken.user.isAdmin,
     });
 
+    // Remove consumed refresh token
+    await prisma.refreshToken.delete({
+      where: { id: storedToken.id },
+    }).catch(() => {});
+
     return tokens;
   }
 
   /**
-   * Logout — revoke the refresh token
+   * Logout — delete the refresh token
    */
   async logout(refreshToken: string): Promise<void> {
-    await prisma.refreshToken.updateMany({
-      where: { token: refreshToken, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await prisma.refreshToken.deleteMany({
+      where: { token: refreshToken },
+    }).catch(() => {});
   }
 
   /**
-   * Logout from all devices — revoke all refresh tokens
+   * Logout from all devices — delete all refresh tokens
    */
   async logoutAll(userId: string): Promise<void> {
-    await prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await prisma.refreshToken.deleteMany({
+      where: { userId },
+    }).catch(() => {});
   }
 
   /**
    * Change password
    */
-  async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+  async changePassword(userId: string, input: ChangePasswordInput): Promise<AuthTokens> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -222,8 +306,17 @@ export class AuthService {
       data: { passwordHash: newHash },
     });
 
-    // Revoke all refresh tokens (force re-login on all devices)
+    // Revoke all existing refresh tokens
     await this.logoutAll(userId);
+
+    // Issue fresh tokens for the current device
+    const tokens = await this.generateTokens({
+      userId: user.id,
+      email: user.email,
+      isAdmin: user.isAdmin,
+    });
+
+    return tokens;
   }
 
   /**
@@ -252,6 +345,118 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Request password reset OTP
+   */
+  async forgotPassword(input: { email: string }): Promise<{ otp?: string }> {
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail },
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundError('This account is not registered in this app.');
+    }
+
+    // Generate 4 digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        otpCode: otp,
+        otpExpiresAt: expiresAt,
+      },
+    });
+
+    await EmailService.sendPasswordResetOtp({
+      to: user.email,
+      otp,
+      recipientName: user.firstName,
+    });
+
+    return {};
+  }
+
+  /**
+   * Verify OTP
+   */
+  async verifyOtp(input: { email: string; otp: string }): Promise<void> {
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail },
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedError('Invalid or expired OTP');
+    }
+
+    if (user.otpCode !== input.otp.trim() || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+      throw new UnauthorizedError('Invalid or expired OTP');
+    }
+  }
+
+  /**
+   * Reset Password
+   */
+  async resetPassword(input: { email: string; otp: string; newPassword: string }): Promise<AuthResponse> {
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail },
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedError('Invalid or expired OTP');
+    }
+
+    if (user.otpCode !== input.otp.trim() || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+      throw new UnauthorizedError('Invalid or expired OTP');
+    }
+
+    const newHash = await bcrypt.hash(input.newPassword, env.BCRYPT_SALT_ROUNDS);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newHash,
+        otpCode: null,
+        otpExpiresAt: null,
+      },
+    });
+
+    // Revoke all existing sessions
+    await this.logoutAll(user.id);
+
+    // Generate fresh tokens for the new session
+    const tokens = await this.generateTokens({
+      userId: user.id,
+      email: user.email,
+      isAdmin: user.isAdmin,
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatarUrl: user.avatarUrl,
+        isVerified: user.isVerified,
+      },
+      tokens,
+    };
+  }
+
   // ─── Private helpers ────────────────────────────────────────
 
   private async generateTokens(payload: JwtPayload): Promise<AuthTokens> {
@@ -269,7 +474,7 @@ export class AuthService {
 
     // Calculate expiry date
     const expiresAt = new Date();
-    const days = parseInt(env.JWT_REFRESH_EXPIRY) || 7;
+    const days = parseInt(env.JWT_REFRESH_EXPIRY) || 90;
     expiresAt.setDate(expiresAt.getDate() + days);
 
     // Store refresh token in database

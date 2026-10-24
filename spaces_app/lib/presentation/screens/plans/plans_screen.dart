@@ -5,6 +5,7 @@ import '../../../providers/plans_provider.dart';
 import '../../../providers/ai_credits_provider.dart';
 import '../../../data/models/plan_model.dart';
 import '../../widgets/top_alert_bar.dart';
+import '../../widgets/settings_container_dialog.dart';
 
 class PlansScreen extends StatefulWidget {
   const PlansScreen({super.key});
@@ -14,7 +15,7 @@ class PlansScreen extends StatefulWidget {
 }
 
 class _PlansScreenState extends State<PlansScreen> {
-  String _billingCycle = 'monthly';
+  final String _billingCycle = 'monthly';
 
   @override
   void initState() {
@@ -55,13 +56,28 @@ class _PlansScreenState extends State<PlansScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('• ${plan.storageFormatted} Cloud Storage', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '• ${plan.storageFormatted} Cloud Storage',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                   const SizedBox(height: 4),
-                  Text('• ${plan.aiCreditsMonthly} AI Credits / month', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  Text(
+                    '• ${plan.aiCreditsMonthly} AI Credits / month',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text('• ${plan.deepSearchLimit == -1 ? "Unlimited" : plan.deepSearchLimit} Deep RAG Searches', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '• ${plan.deepSearchLimit == -1 ? "Unlimited" : plan.deepSearchLimit} Deep RAG Searches',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                   const SizedBox(height: 4),
-                  Text('• ${plan.aiEnabledFileLimit == -1 ? "Unlimited" : plan.aiEnabledFileLimit} AI-Indexed Files', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '• ${plan.aiEnabledFileLimit == -1 ? "Unlimited" : plan.aiEnabledFileLimit} AI-Indexed Files',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 ],
               ),
             ),
@@ -79,7 +95,10 @@ class _PlansScreenState extends State<PlansScreen> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              final success = await context.read<PlansProvider>().upgradePlan(plan.id, billingCycle: _billingCycle);
+              final success = await context.read<PlansProvider>().upgradePlan(
+                plan.id,
+                billingCycle: _billingCycle,
+              );
               if (mounted) {
                 if (success) {
                   context.read<AiCreditsProvider>().fetchBalance();
@@ -137,7 +156,11 @@ class _PlansScreenState extends State<PlansScreen> {
     );
   }
 
-  Widget _buildCreditPackTile(int credits, int priceInr, {bool isPopular = false}) {
+  Widget _buildCreditPackTile(
+    int credits,
+    int priceInr, {
+    bool isPopular = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(
@@ -166,7 +189,10 @@ class _PlansScreenState extends State<PlansScreen> {
           ),
           onPressed: () async {
             Navigator.pop(context);
-            final success = await context.read<AiCreditsProvider>().buyCredits(credits, priceInr);
+            final success = await context.read<AiCreditsProvider>().buyCredits(
+              credits,
+              priceInr,
+            );
             if (mounted) {
               if (success) {
                 TopAlertBar.showSuccess(
@@ -195,106 +221,84 @@ class _PlansScreenState extends State<PlansScreen> {
     final currentSub = plansProvider.currentSubscription;
     final activePlanId = currentSub?.planId;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          tooltip: 'Back',
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        title: const Text('Plans & Storage', style: TextStyle(fontWeight: FontWeight.w700)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: ActionChip(
-              avatar: const Icon(Icons.bolt_rounded, color: AppColors.accent, size: 18),
-              label: Text(
-                '${creditsProvider.currentCredits} cr',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent),
-              ),
-              backgroundColor: AppColors.accent.withOpacity(0.12),
-              onPressed: _showCreditPackSheet,
-            ),
-          ),
-        ],
-      ),
-      body: plansProvider.isLoading
+    return SettingsScreenScaffold(
+      title: 'Plans & Storage',
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: plansProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {
-                await plansProvider.fetchPlans();
-                await plansProvider.fetchCurrentSubscription();
-                await creditsProvider.fetchBalance();
-              },
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  // Header Banner
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: isDark
-                            ? [const Color(0xFF1E1B4B), const Color(0xFF312E81)]
-                            : [const Color(0xFFEEF2FF), const Color(0xFFE0E7FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+          : Column(
+              children: [
+                // Header Banner
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDark
+                          ? [const Color(0xFF1E1B4B), const Color(0xFF312E81)]
+                          : [const Color(0xFFEEF2FF), const Color(0xFFE0E7FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.accent.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 26,
+                        backgroundColor: AppColors.accent,
+                        child: Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.accent.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 26,
-                          backgroundColor: AppColors.accent,
-                          child: Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Active Plan: ${currentSub?.plan?.displayName ?? "Free"}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16,
-                                ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Active Plan: ${currentSub?.plan?.displayName ?? "Free"}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${creditsProvider.currentCredits} AI credits remaining this period',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark ? Colors.white70 : Colors.black87,
-                                ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${creditsProvider.currentCredits} AI credits remaining this period',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.white70 : Colors.black87,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        OutlinedButton(
-                          onPressed: _showCreditPackSheet,
-                          child: const Text('Top Up'),
-                        ),
-                      ],
-                    ),
+                      ),
+                      OutlinedButton(
+                        onPressed: _showCreditPackSheet,
+                        child: const Text('Top Up'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
+                ),
+                const SizedBox(height: 24),
 
-                  const Text(
-                    'Available Subscription Tiers',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
+                const Text(
+                  'Available Subscription Tiers',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
 
-                  // Plans cards
-                  ...plansProvider.plans.map((plan) {
-                    final isCurrent = plan.id == activePlanId;
-                    return _buildPlanCard(plan, isCurrent, isDark);
-                  }),
-                ],
-              ),
+                // Plans cards
+                ...plansProvider.plans.map((plan) {
+                  final isCurrent = plan.id == activePlanId;
+                  return _buildPlanCard(plan, isCurrent, isDark);
+                }),
+              ],
             ),
     );
   }
@@ -329,27 +333,34 @@ class _PlansScreenState extends State<PlansScreen> {
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plan.displayName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plan.displayName,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      plan.description,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        plan.description,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
-                if (isCurrent)
+                if (isCurrent) ...[
+                  const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.accent.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
@@ -364,6 +375,7 @@ class _PlansScreenState extends State<PlansScreen> {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 16),
@@ -383,9 +395,16 @@ class _PlansScreenState extends State<PlansScreen> {
               ],
             ),
             const Divider(height: 28),
-            _buildFeatureRow(Icons.cloud_outlined, '${plan.storageFormatted} Secure Cloud Storage'),
+            _buildFeatureRow(
+              Icons.cloud_outlined,
+              '${plan.storageFormatted} Secure Cloud Storage',
+            ),
             const SizedBox(height: 8),
-            _buildFeatureRow(Icons.bolt_rounded, '${plan.aiCreditsMonthly} Monthly AI Credits', isBold: true),
+            _buildFeatureRow(
+              Icons.bolt_rounded,
+              '${plan.aiCreditsMonthly} Monthly AI Credits',
+              isBold: true,
+            ),
             const SizedBox(height: 8),
             _buildFeatureRow(
               Icons.search_rounded,
@@ -420,7 +439,11 @@ class _PlansScreenState extends State<PlansScreen> {
                 ),
                 onPressed: isCurrent ? null : () => _showUpgradeDialog(plan),
                 child: Text(
-                  isCurrent ? 'Current Plan' : (isPro || isPlus ? 'Upgrade to ${plan.displayName}' : 'Downgrade to Free'),
+                  isCurrent
+                      ? 'Current Plan'
+                      : (isPro || isPlus
+                            ? 'Upgrade to ${plan.displayName}'
+                            : 'Downgrade to Free'),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),

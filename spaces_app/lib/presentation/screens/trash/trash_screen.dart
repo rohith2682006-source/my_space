@@ -94,13 +94,14 @@ class _TrashScreenState extends State<TrashScreen> {
     final trashFiles = filesProvider.trashFiles;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
             // Floating Glass Header
             SliverToBoxAdapter(
               child: FloatingHeaderBar(
-                showBackButton: true,
+                showBackButton: false,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -294,15 +295,19 @@ class _TrashScreenState extends State<TrashScreen> {
                                   vertical: 12,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? AppColors.darkCard
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
+                                  color: (isDark ? Colors.black : Colors.white).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: isDark
-                                        ? AppColors.darkBorder
-                                        : AppColors.lightBorder,
+                                    color: Colors.white.withOpacity(0.18),
+                                    width: 1,
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.04),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
                                 child: Row(
                                   children: [

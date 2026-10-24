@@ -1,19 +1,15 @@
 import 'package:flutter/foundation.dart';
+import '../../presentation/widgets/top_alert_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:open_filex/open_filex.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'file_cache_stub.dart' if (dart.library.io) 'file_cache_io.dart';
 import '../api/api_endpoints.dart';
 import '../../data/services/auth_storage.dart';
 import '../../data/models/file_model.dart';
 import '../theme/app_colors.dart';
 import 'desktop_integration_stub.dart'
     if (dart.library.js_interop) 'desktop_integration_web.dart';
-
-import '../../presentation/widgets/top_alert_bar.dart';
 
 import '../services/native_file_service.dart';
 
@@ -262,15 +258,9 @@ class DesktopIntegration {
                   onTap: () {
                     Navigator.pop(ctx);
                     Clipboard.setData(ClipboardData(text: url));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Link copied to clipboard!'),
-                        backgroundColor: AppColors.success,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                    TopAlertBar.showSuccess(
+                      context,
+                      'Link copied to clipboard!',
                     );
                   },
                 ),

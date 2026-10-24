@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../providers/auth_provider.dart';
 import '../../widgets/custom_button.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
-import '../main_navigation_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -18,7 +15,6 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  bool _isDemoLoading = false;
 
   final List<Map<String, dynamic>> _pages = [
     {
@@ -67,13 +63,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.asset(
+                          'assets/icon/app_icon.png',
+                          width: 36,
+                          height: 36,
                         ),
-                        child: const Icon(Icons.layers_rounded, color: Colors.white, size: 20),
                       ),
                       const SizedBox(width: 10),
                       const Text(
@@ -114,58 +110,70 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         children: [
                           // Card Preview
                           Container(
-                            width: 220,
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: isDark ? AppColors.darkCard : Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: (item['color'] as Color).withOpacity(0.3),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (item['color'] as Color).withOpacity(0.15),
-                                  blurRadius: 30,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  item['icon'],
-                                  style: const TextStyle(fontSize: 48),
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  item['tag'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: (item['color'] as Color).withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    item['badge'],
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: item['color'],
+                                width: 220,
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? AppColors.darkCard
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: (item['color'] as Color).withOpacity(
+                                      0.3,
                                     ),
+                                    width: 1.5,
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (item['color'] as Color)
+                                          .withOpacity(0.15),
+                                      blurRadius: 30,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          )
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      item['icon'],
+                                      style: const TextStyle(fontSize: 48),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      item['tag'],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: (item['color'] as Color)
+                                            .withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        item['badge'],
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: item['color'],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
                               .animate(target: _currentPage == index ? 1 : 0)
-                              .scale(duration: 400.ms, curve: Curves.easeOutBack),
+                              .scale(
+                                duration: 400.ms,
+                                curve: Curves.easeOutBack,
+                              ),
                           const SizedBox(height: 32),
                           // Title
                           Text(
@@ -185,7 +193,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               height: 1.5,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
                           ),
                         ],
@@ -208,7 +218,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     decoration: BoxDecoration(
                       color: _currentPage == index
                           ? AppColors.primary
-                          : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                          : (isDark
+                                ? AppColors.darkBorder
+                                : AppColors.lightBorder),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -216,27 +228,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
               const Spacer(),
               // CTA Buttons
-              SizedBox(
-                width: double.infinity,
-                child: CustomButton(
-                  text: '⚡ Instant Demo Access (demo@spaces.app)',
-                  isLoading: _isDemoLoading,
-                  onPressed: () async {
-                    setState(() => _isDemoLoading = true);
-                    final auth = Provider.of<AuthProvider>(context, listen: false);
-                    final success = await auth.login('demo@spaces.app', 'Password123!');
-                    setState(() => _isDemoLoading = false);
-                    if (success && mounted) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: CustomButton(

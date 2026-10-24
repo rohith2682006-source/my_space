@@ -14,51 +14,55 @@ def _int_setting(name: str, default: int, minimum: int = 1) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Feature Flag
+# ---------------------------------------------------------------------------
+
+RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() in ("true", "1", "yes")
+
+# ---------------------------------------------------------------------------
 # AI Models
 # ---------------------------------------------------------------------------
 
-# Gemini is now used for normal AI chat and RAG answers.
+# Use the latest alias for the chat model as required
 LLM_MODEL = os.environ.get(
     "LLM_MODEL",
-    "gemini-2.5-flash",
+    "gemini-flash-latest",
 )
 
-# Gemini is now used for embeddings/indexing as well.
+LLM_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.environ.get(
+        "LLM_FALLBACK_MODELS",
+        "gemini-2.5-flash,gemini-3.5-flash,gemini-3.1-flash-lite",
+    ).split(",")
+    if model.strip()
+]
+
+# Gemini embedding model (768 dimensions)
 EMBEDDING_MODEL = os.environ.get(
     "EMBEDDING_MODEL",
     "gemini-embedding-2",
 )
-
+EMBEDDING_DIMENSIONS = _int_setting("EMBEDDING_DIMENSIONS", 768)
+EMBEDDING_BATCH_SIZE = _int_setting("EMBEDDING_BATCH_SIZE", 100)
 
 # ---------------------------------------------------------------------------
-# Document Processing
+# Document Processing & RAG Limits
 # ---------------------------------------------------------------------------
 
-CHUNK_SIZE = _int_setting(
-    "CHUNK_SIZE",
-    800,
-)
+CHUNK_SIZE_WORDS = _int_setting("CHUNK_SIZE_WORDS", 350)
+CHUNK_OVERLAP_WORDS = _int_setting("CHUNK_OVERLAP_WORDS", 50, minimum=0)
 
-CHUNK_OVERLAP = _int_setting(
-    "CHUNK_OVERLAP",
-    120,
-    minimum=0,
-)
+MAX_PDF_PAGES = _int_setting("MAX_PDF_PAGES", 100)
+MAX_VIDEO_MINUTES = _int_setting("MAX_VIDEO_MINUTES", 30)
+MAX_INDEX_FILE_BYTES = _int_setting("MAX_INDEX_FILE_BYTES", 50_000_000)
+MAX_INDEX_CONCURRENCY = _int_setting("MAX_INDEX_CONCURRENCY", 2)
 
-TOP_K = _int_setting(
-    "TOP_K",
-    8,
-)
+TOP_K = _int_setting("TOP_K", 5)
+DISTANCE_CUTOFF = float(os.environ.get("DISTANCE_CUTOFF", "0.25"))
 
-MAX_CONTEXT_TOKENS = _int_setting(
-    "MAX_CONTEXT_TOKENS",
-    8000,
-)
-
-MAX_INDEX_FILE_BYTES = _int_setting(
-    "MAX_INDEX_FILE_BYTES",
-    25_000_000,
-)
+MAX_CONTEXT_TOKENS = _int_setting("MAX_CONTEXT_TOKENS", 8000)
+MAX_CHUNKS_PER_DOCUMENT = _int_setting("MAX_CHUNKS_PER_DOCUMENT", 1000)
 
 MAX_CONVERSATION_MESSAGES = _int_setting(
     "MAX_CONVERSATION_MESSAGES",
@@ -101,11 +105,14 @@ BACKEND_CALLBACK_URL = os.environ.get(
 )
 
 
+CHUNK_SIZE = CHUNK_SIZE_WORDS
+CHUNK_OVERLAP = CHUNK_OVERLAP_WORDS
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
-if CHUNK_OVERLAP >= CHUNK_SIZE:
+if CHUNK_OVERLAP_WORDS >= CHUNK_SIZE_WORDS:
     raise ValueError(
-        "CHUNK_OVERLAP must be smaller than CHUNK_SIZE"
-    )
+        "CHUNK_OVERLAP_WORDS must be smaller than CHUNK_SIZE_WORDS"
+    )

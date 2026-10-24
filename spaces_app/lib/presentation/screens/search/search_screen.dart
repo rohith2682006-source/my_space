@@ -1,16 +1,20 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../widgets/unified_back_button.dart';
+import '../../widgets/ambient_background.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/native_file_service.dart';
 import '../../../providers/files_provider.dart';
 import '../../widgets/file_list_item.dart';
-import '../../widgets/floating_header_bar.dart';
 import '../../widgets/top_alert_bar.dart';
 import '../spaces/space_detail_screen.dart';
 import '../spaces/file_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialQuery;
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -18,15 +22,33 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _controller.text = widget.initialQuery!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _onSearchChanged(widget.initialQuery!);
+      });
+    }
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String query) {
-    Provider.of<FilesProvider>(context, listen: false).search(query);
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        Provider.of<FilesProvider>(context, listen: false).search(query);
+      }
+    });
   }
 
   @override
@@ -35,120 +57,191 @@ class _SearchScreenState extends State<SearchScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final filesProvider = Provider.of<FilesProvider>(context);
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Floating Glass Header
-            FloatingHeaderBar(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.saved_search_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              title: 'Universal Search',
-              subtitle: 'Spaces, files, notes, and links',
-            ),
-
-            // Floating Search Input Field
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xCC1E293B) : Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : Colors.black.withOpacity(0.08),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.25 : 0.05),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
+    return AmbientBackground(
+      isDark: isDark,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top Bar (No border)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+                child: Row(
+                  children: [
+                    const UnifiedBackButton(),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Universal search',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                      ),
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: _controller,
-                  autofocus: false,
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search files, spaces, notes, links...',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 22),
-                    suffixIcon: _controller.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () {
-                              _controller.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                  ),
-                ),
               ),
-            ),
 
-            // Results or Empty Placeholder
-            Expanded(
-              child: filesProvider.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _controller.text.trim().isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.12),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.manage_search_rounded,
-                              size: 36,
-                              color: AppColors.primary,
-                            ),
+              // Floating Search Input Field
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF130B2A)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.14)
+                                : AppColors.lightBorder,
+                            width: 1.0,
                           ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Store it once. Find it instantly.',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.35 : 0.06,
+                              ),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Search anything by file name, note text, or space name',
-                            style: TextStyle(
-                              fontSize: 13,
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_rounded,
+                              size: 24,
                               color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                                  ? AppColors.primaryLight
+                                  : AppColors.primary,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _controller,
+                                autofocus: false,
+                                onChanged: _onSearchChanged,
+                                onSubmitted: (val) {
+                                  _debounce?.cancel();
+                                  Provider.of<FilesProvider>(
+                                    context,
+                                    listen: false,
+                                  ).search(val);
+                                },
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary,
+                                  fontSize: 16,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText:
+                                      'Search files, spaces, notes, links...',
+                                  hintStyle: TextStyle(
+                                    color: isDark
+                                        ? Colors.white54
+                                        : Colors.black45,
+                                    fontSize: 15.5,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  filled: false,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_controller.text.isNotEmpty)
+                              IconButton(
+                                icon: Icon(
+                                  Icons.clear_rounded,
+                                  size: 20,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.black54,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () {
+                                  _controller.clear();
+                                  _onSearchChanged('');
+                                },
+                              ),
+                          ],
+                        ),
                       ),
-                    )
+              ),
+
+              // Results or Empty Placeholder
+              Expanded(
+                child: filesProvider.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _controller.text.trim().isEmpty
+                    ? Center(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 24),
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF130B2A)
+                                : Colors.white,
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: isDark
+                                      ? Colors.white.withOpacity(0.18)
+                                      : AppColors.lightBorder,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 72,
+                                    height: 72,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.manage_search_rounded,
+                                      size: 36,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Store it once. Find it instantly.',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Search anything by file name, note text, or space name',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
                   : (filesProvider.searchedSpaces.isEmpty &&
                         filesProvider.searchedFiles.isEmpty)
                   ? Center(
@@ -163,6 +256,9 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                     )
                   : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: ClampingScrollPhysics(),
+                      ),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
                         // Matched Spaces
@@ -244,11 +340,6 @@ class _SearchScreenState extends State<SearchScreen> {
                                     context,
                                     file,
                                   );
-                                } else if (action == 'share_link') {
-                                  NativeFileService.shareSecureLink(
-                                    context,
-                                    file,
-                                  );
                                 } else if (action == 'download') {
                                   NativeFileService.downloadOriginalFile(
                                     context,
@@ -259,7 +350,8 @@ class _SearchScreenState extends State<SearchScreen> {
                                   TopAlertBar.showTrash(
                                     context,
                                     '"${file.name}" moved to Trash',
-                                    onUndo: () => filesProvider.restoreFile(file.id),
+                                    onUndo: () =>
+                                        filesProvider.restoreFile(file.id),
                                   );
                                 } else if (action == 'reindex') {
                                   filesProvider.reindexDocument(file.id);
@@ -274,6 +366,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -7,6 +7,10 @@ import {
   loginSchema,
   refreshTokenSchema,
   changePasswordSchema,
+  googleLoginSchema,
+  forgotPasswordSchema,
+  verifyOtpSchema,
+  resetPasswordSchema,
 } from './auth.schema';
 
 const router = Router();
@@ -14,8 +18,12 @@ const router = Router();
 // Public routes
 router.post('/register', validate(registerSchema), authController.register);
 router.post('/login', validate(loginSchema), authController.login);
+router.post('/google', validate(googleLoginSchema), authController.googleLogin);
 router.post('/refresh', validate(refreshTokenSchema), authController.refreshToken);
 router.post('/logout', authController.logout);
+router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/verify-otp', validate(verifyOtpSchema), authController.verifyOtp);
+router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);
 
 // Protected routes
 router.get('/me', authenticate, authController.getProfile);

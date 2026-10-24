@@ -7,6 +7,7 @@ export const createSpaceSchema = z.object({
   color: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Invalid hex color').default('#6366F1'),
   coverUrl: z.string().url().optional().or(z.literal('')),
   isPrivate: z.boolean().default(true),
+  password: z.string().optional(),
 });
 
 export const updateSpaceSchema = z.object({
@@ -16,7 +17,14 @@ export const updateSpaceSchema = z.object({
   color: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Invalid hex color').optional(),
   coverUrl: z.string().url().optional().or(z.literal('')),
   isPrivate: z.boolean().optional(),
+  password: z.string().optional(),
 });
+
+export const verifySpacePasswordSchema = z.object({
+  password: z.string().min(1, 'Password is required'),
+});
+
+export type VerifySpacePasswordInput = z.infer<typeof verifySpacePasswordSchema>;
 
 export const spaceQuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),

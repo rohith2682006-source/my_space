@@ -25,11 +25,12 @@ export function validate(schema: ZodSchema, source: 'body' | 'query' | 'params' 
           message: err.message,
         }));
 
+        const firstErrorMsg = formattedErrors.length > 0 ? formattedErrors[0].message : 'Request validation failed';
         res.status(400).json({
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Request validation failed',
+            message: firstErrorMsg,
             details: formattedErrors,
           },
         });

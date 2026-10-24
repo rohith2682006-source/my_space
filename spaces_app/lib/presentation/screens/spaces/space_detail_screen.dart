@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../widgets/unified_back_button.dart';
+import '../../widgets/ambient_background.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/api/api_endpoints.dart';
-import '../../../core/utils/desktop_integration.dart';
 import '../../../core/services/native_file_service.dart';
 import '../../../data/models/space_model.dart';
 import '../../../data/models/file_model.dart';
@@ -13,6 +15,7 @@ import '../../widgets/file_list_item.dart';
 import '../../widgets/quick_add_sheet.dart';
 import '../../widgets/top_alert_bar.dart';
 import '../sharing/share_dialog.dart';
+import 'file_version_history_screen.dart';
 import 'file_detail_screen.dart';
 
 class SpaceDetailScreen extends StatefulWidget {
@@ -95,20 +98,14 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success
-                    ? 'Uploaded "${file.name}"'
-                    : (filesProvider.errorMessage ?? 'Upload failed'),
-              ),
-              backgroundColor: success ? AppColors.success : AppColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          if (success) {
+            TopAlertBar.showSuccess(context, 'Uploaded "${file.name}"');
+          } else {
+            TopAlertBar.showError(
+              context,
+              filesProvider.errorMessage ?? 'Upload failed',
+            );
+          }
         }
       } else {
         // Multi-file batch upload
@@ -122,20 +119,14 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Uploaded $uploadedCount of ${validFiles.length} files to ${widget.space.name}',
-              ),
-              backgroundColor: uploadedCount > 0
-                  ? AppColors.success
-                  : AppColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          if (uploadedCount > 0) {
+            TopAlertBar.showSuccess(
+              context,
+              'Uploaded $uploadedCount of ${validFiles.length} files to ${widget.space.name}',
+            );
+          } else {
+            TopAlertBar.showError(context, 'Upload failed');
+          }
         }
       }
     }
@@ -271,12 +262,11 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
   }
 
   void _showShareDialog() {
-    DesktopIntegration.shareViaDesktopApps(
-      context,
-      title: widget.space.name,
-      text: 'Access "${widget.space.name}" on Spaces',
-      shareUrl:
-          '${ApiEndpoints.baseUrl.replaceAll('/api/v1', '')}/shared/space/${widget.space.id}',
+    final shareUrl =
+        '${ApiEndpoints.baseUrl.replaceAll('/api/v1', '')}/shared/space/${widget.space.id}';
+    Share.share(
+      '${widget.space.icon} ${widget.space.name}\n\nAccess this space on Spaces App:\n$shareUrl',
+      subject: 'Check out "${widget.space.name}" on Spaces',
     );
   }
 
@@ -303,6 +293,14 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
       case 'move':
         _showMoveDialog(file);
         break;
+      case 'versions':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FileVersionHistoryScreen(file: file),
+          ),
+        );
+        break;
       case 'trash':
         final success = await filesProvider.trashFile(file.id);
         if (mounted && success) {
@@ -321,8 +319,9 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
 
   void _showMoveDialog(FileModel file) {
     final spacesProvider = Provider.of<SpacesProvider>(context, listen: false);
-    final targetSpaces =
-        spacesProvider.spaces.where((s) => s.id != widget.space.id).toList();
+    final targetSpaces = spacesProvider.spaces
+        .where((s) => s.id != widget.space.id)
+        .toList();
 
     if (targetSpaces.isEmpty) {
       TopAlertBar.showInfo(context, 'No other spaces available to move to');
@@ -410,150 +409,154 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
     final spaceColor = _parseHex(widget.space.color);
     final filesProvider = Provider.of<FilesProvider>(context);
 
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Collapsible Space Header
-          SliverAppBar(
-            expandedHeight: 160,
-            pinned: true,
-            backgroundColor: isDark ? AppColors.darkBackground : Colors.white,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.share_outlined),
-                tooltip: 'Share Space',
-                onPressed: _showShareDialog,
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded),
-                tooltip: 'More options',
-                onSelected: (val) async {
-                  if (val == 'advanced_share') {
-                    showDialog(
-                      context: context,
-                      builder: (_) => ShareDialog(space: widget.space),
-                    );
-                  } else if (val == 'delete_space') {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        title: const Text('Delete this Space?'),
-                        content: Text(
-                          'Are you sure you want to delete "${widget.space.name}" and all of its files?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancel'),
+    return AmbientBackground(
+      isDark: isDark,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: ClampingScrollPhysics(),
+          ),
+          cacheExtent: 1000,
+          slivers: [
+            // Collapsible Space Header
+            SliverAppBar(
+              expandedHeight: 160,
+              pinned: true,
+              backgroundColor: Colors.transparent,
+              leading: const UnifiedBackButton(),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  tooltip: 'Share Space',
+                  onPressed: _showShareDialog,
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded),
+                  tooltip: 'More options',
+                  onSelected: (val) async {
+                    if (val == 'advanced_share') {
+                      showDialog(
+                        context: context,
+                        builder: (_) => ShareDialog(space: widget.space),
+                      );
+                    } else if (val == 'delete_space') {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.error,
-                              foregroundColor: Colors.white,
+                          title: const Text('Delete this Space?'),
+                          content: Text(
+                            'Are you sure you want to delete "${widget.space.name}" and all of its files?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
                             ),
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Delete'),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.error,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true && mounted) {
+                        await Provider.of<SpacesProvider>(
+                          context,
+                          listen: false,
+                        ).deleteSpace(widget.space.id);
+                        if (mounted) Navigator.pop(context);
+                      }
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'delete_space',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_forever_rounded,
+                            color: AppColors.error,
+                            size: 18,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Delete Space',
+                            style: TextStyle(color: AppColors.error),
                           ),
                         ],
                       ),
-                    );
-                    if (confirm == true && mounted) {
-                      await Provider.of<SpacesProvider>(
-                        context,
-                        listen: false,
-                      ).deleteSpace(widget.space.id);
-                      if (mounted) Navigator.pop(context);
-                    }
-                  }
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: 'advanced_share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.link_rounded, size: 18),
-                        SizedBox(width: 10),
-                        Text('Share Link Settings'),
-                      ],
                     ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'delete_space',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_forever_rounded,
-                          color: AppColors.error,
-                          size: 18,
+                  ],
+                ),
+                const SizedBox(width: 8),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.only(
+                  left: 56,
+                  bottom: 16,
+                  right: 16,
+                ),
+                title: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: spaceColor.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: spaceColor.withOpacity(0.4),
+                          width: 1,
                         ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Delete Space',
-                          style: TextStyle(color: AppColors.error),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(
-                left: 56,
-                bottom: 16,
-                right: 16,
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: spaceColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      widget.space.icon,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      widget.space.name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
                       ),
-                      overflow: TextOverflow.ellipsis,
+                      alignment: Alignment.center,
+                      child: Text(
+                        widget.space.icon,
+                        style: const TextStyle(fontSize: 16),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      spaceColor.withOpacity(isDark ? 0.3 : 0.15),
-                      isDark ? AppColors.darkBackground : Colors.white,
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        widget.space.name,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                background: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        spaceColor.withOpacity(isDark ? 0.35 : 0.15),
+                        isDark ? Colors.black.withOpacity(0.25) : AppColors.lightBackground.withOpacity(0.5),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isDark ? Colors.white.withOpacity(0.12) : AppColors.lightBorder,
+                        width: 1,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
           // Search & Filter Toolbar
           SliverToBoxAdapter(
@@ -564,13 +567,6 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
                   // Floating Search Bar inside space
                   Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xCC1E293B) : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: isDark
-                            ? Colors.white.withOpacity(0.10)
-                            : Colors.black.withOpacity(0.06),
-                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
@@ -581,16 +577,47 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
                     ),
                     child: TextField(
                       controller: _searchController,
+                      textAlignVertical: TextAlignVertical.center,
                       onChanged: (val) {
                         _searchQuery = val;
                         _loadFiles();
                       },
                       decoration: InputDecoration(
                         hintText: 'Search in ${widget.space.name}...',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
+                        filled: false,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.10)
+                                : Colors.black.withOpacity(0.06),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.10)
+                                : Colors.black.withOpacity(0.06),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                            width: 1.5,
+                          ),
+                        ),
+                        isDense: true,
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          size: 20,
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
                                 icon: const Icon(Icons.clear, size: 18),
@@ -602,8 +629,8 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
                               )
                             : null,
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
+                          horizontal: 16,
+                          vertical: 14,
                         ),
                       ),
                     ),
@@ -785,6 +812,7 @@ class _SpaceDetailScreenState extends State<SpaceDetailScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

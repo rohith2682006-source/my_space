@@ -29,6 +29,19 @@ export class AuthController {
     }
   }
 
+  async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.googleLogin(req.body.idToken, req.body.isSignUp);
+      res.status(200).json({
+        success: true,
+        message: 'Google login successful',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { refreshToken } = req.body;
@@ -79,10 +92,11 @@ export class AuthController {
     next: NextFunction
   ): Promise<void> {
     try {
-      await authService.changePassword(req.user!.userId, req.body);
+      const tokens = await authService.changePassword(req.user!.userId, req.body);
       res.status(200).json({
         success: true,
-        message: 'Password changed successfully. Please login again.',
+        message: 'Password changed successfully.',
+        data: { tokens },
       });
     } catch (error) {
       next(error);
@@ -99,6 +113,44 @@ export class AuthController {
       res.status(200).json({
         success: true,
         data: profile,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.forgotPassword(req.body);
+      res.status(200).json({
+        success: true,
+        message: 'A 4-digit verification code has been sent to your registered email address.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await authService.verifyOtp(req.body);
+      res.status(200).json({
+        success: true,
+        message: 'OTP verified successfully.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.resetPassword(req.body);
+      res.status(200).json({
+        success: true,
+        message: 'Password has been reset successfully.',
+        data: result,
       });
     } catch (error) {
       next(error);

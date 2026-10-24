@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../../presentation/widgets/top_alert_bar.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/file_helper.dart';
@@ -40,6 +42,7 @@ class _StorageScreenState extends State<StorageScreen> {
     final usagePercent = stats?.usagePercentage ?? 0.0;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -59,78 +62,88 @@ class _StorageScreenState extends State<StorageScreen> {
               child: RefreshIndicator(
                 onRefresh: () async => _loadStorageData(),
                 child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: ClampingScrollPhysics(),
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             children: [
               // Storage Gauge Card
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : Colors.white,
+                  color: isDark ? const Color(0xFF130B2A) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color: isDark ? Colors.white.withOpacity(0.12) : AppColors.lightBorder,
+                    width: 1,
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Cloud Storage',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text(
-                            'Free Plan',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Cloud Storage',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                             ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'Free Plan',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Progress Bar
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: (usagePercent / 100).clamp(0.01, 1.0),
+                            minHeight: 10,
+                            backgroundColor: isDark ? AppColors.darkBorder : const Color(0xFFE2E8F0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '$totalUsed of $storageLimit used',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
+                            ),
+                            Text(
+                              '${usagePercent.toStringAsFixed(1)}%',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // Progress Bar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: (usagePercent / 100).clamp(0.01, 1.0),
-                        minHeight: 10,
-                        backgroundColor: isDark ? AppColors.darkBorder : const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '$totalUsed of $storageLimit used',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                          ),
-                        ),
-                        Text(
-                          '${usagePercent.toStringAsFixed(1)}%',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
+                  ),
+                  const SizedBox(height: 24),
 
               // Category Breakdown Title
               const Text(
@@ -185,10 +198,10 @@ class _StorageScreenState extends State<StorageScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkCard : Colors.white,
+                    color: (isDark ? Colors.black : Colors.white).withOpacity(0.12),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color: Colors.white.withOpacity(0.15),
                     ),
                   ),
                   child: Center(
@@ -218,10 +231,10 @@ class _StorageScreenState extends State<StorageScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkCard : Colors.white,
+                      color: (isDark ? Colors.black : Colors.white).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                        color: Colors.white.withOpacity(0.15),
                       ),
                     ),
                     child: Row(
@@ -255,9 +268,7 @@ class _StorageScreenState extends State<StorageScreen> {
                           onPressed: () async {
                             await filesProvider.restoreFile(file.id);
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('File restored')),
-                              );
+                              TopAlertBar.showSuccess(context, 'File restored');
                             }
                           },
                         ),
@@ -267,9 +278,7 @@ class _StorageScreenState extends State<StorageScreen> {
                           onPressed: () async {
                             await filesProvider.deletePermanently(file.id);
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Permanently deleted')),
-                              );
+                              TopAlertBar.showSuccess(context, 'Permanently deleted');
                             }
                           },
                         ),
@@ -350,10 +359,11 @@ class _StorageScreenState extends State<StorageScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: (isDark ? Colors.black : Colors.white).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: Colors.white.withOpacity(0.15),
+          width: 1,
         ),
       ),
       child: Row(

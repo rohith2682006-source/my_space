@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 
@@ -14,7 +13,7 @@ class TopAlertBar {
     Color? customColor,
     String? actionLabel,
     VoidCallback? onAction,
-    Duration duration = const Duration(milliseconds: 2600),
+    Duration duration = const Duration(seconds: 2),
   }) {
     // Remove any active top bar first
     _currentEntry?.remove();
@@ -78,7 +77,7 @@ class TopAlertBar {
       customColor: const Color(0xFFEF4444),
       actionLabel: onUndo != null ? 'Undo' : null,
       onAction: onUndo,
-      duration: const Duration(milliseconds: 3200),
+      duration: const Duration(seconds: 2),
     );
   }
 }
@@ -192,17 +191,13 @@ class _TopAlertWidgetState extends State<_TopAlertWidget>
                   if (mounted) widget.onDismiss();
                 });
               },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xE818181B)
-                          : const Color(0xF2FFFFFF),
-                      borderRadius: BorderRadius.circular(24),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1E1E24)
+                      : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isDark
                             ? Colors.white.withOpacity(0.14)
@@ -283,8 +278,6 @@ class _TopAlertWidgetState extends State<_TopAlertWidget>
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }

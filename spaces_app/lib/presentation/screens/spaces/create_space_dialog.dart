@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../widgets/top_alert_bar.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/spaces_provider.dart';
 import '../../../data/services/auth_storage.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
-import '../../widgets/top_alert_bar.dart';
 import '../auth/login_screen.dart';
 
 class CreateSpaceDialog extends StatefulWidget {
@@ -19,6 +19,8 @@ class CreateSpaceDialog extends StatefulWidget {
 class _CreateSpaceDialogState extends State<CreateSpaceDialog> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   String _selectedIcon = '📁';
   String _selectedColor = '#6366F1';
@@ -59,6 +61,8 @@ class _CreateSpaceDialogState extends State<CreateSpaceDialog> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -69,16 +73,27 @@ class _CreateSpaceDialogState extends State<CreateSpaceDialog> {
   Future<void> _handleCreate() async {
     if (_nameController.text.trim().isEmpty) return;
 
+    if (_isPrivate) {
+      if (_passwordController.text.trim().isEmpty) {
+        TopAlertBar.showError(
+          context,
+          'Please set a password/PIN for the private space.',
+        );
+        return;
+      }
+      if (_passwordController.text != _confirmPasswordController.text) {
+        TopAlertBar.showError(context, 'Passwords do not match.');
+        return;
+      }
+    }
+
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final token = await AuthStorage.getAccessToken();
     if (!auth.isAuthenticated || token == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Your session has expired. Please sign in again.'),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
+        TopAlertBar.showError(
+          context,
+          'Your session has expired. Please sign in again.',
         );
         Navigator.pop(context);
         Navigator.pushAndRemoveUntil(
@@ -93,17 +108,18 @@ class _CreateSpaceDialogState extends State<CreateSpaceDialog> {
     setState(() => _isLoading = true);
     final spacesProvider = Provider.of<SpacesProvider>(context, listen: false);
 
-    final success = await spacesProvider.createSpace(
+    final newSpace = await spacesProvider.createSpace(
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
       icon: _selectedIcon,
       color: _selectedColor,
       isPrivate: _isPrivate,
+      password: _isPrivate ? _passwordController.text : null,
     );
 
     setState(() => _isLoading = false);
 
-    if (success && mounted) {
+    if (newSpace != null && mounted) {
       Navigator.pop(context, true);
     } else if (mounted) {
       final error =
@@ -288,6 +304,22 @@ class _CreateSpaceDialogState extends State<CreateSpaceDialog> {
                 activeThumbColor: AppColors.primary,
                 onChanged: (val) => setState(() => _isPrivate = val),
               ),
+              if (_isPrivate) ...[
+                const SizedBox(height: 16),
+                CustomTextField(
+                  controller: _passwordController,
+                  label: 'Set Password / PIN',
+                  isPassword: true,
+                  prefixIcon: Icons.lock_outline_rounded,
+                ),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  controller: _confirmPasswordController,
+                  label: 'Confirm Password / PIN',
+                  isPassword: true,
+                  prefixIcon: Icons.lock_outline_rounded,
+                ),
+              ],
               const SizedBox(height: 24),
               // Action Buttons
               Row(

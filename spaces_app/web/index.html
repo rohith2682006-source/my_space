@@ -19,6 +19,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
+  
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -63,7 +64,7 @@
 
     window.openFileInNativeApp = function(url, filename) {
       try {
-        const win = window.open(url, '_blank');
+        // const win = window.open(url, '_blank');
         if (win) {
           win.focus();
           return true;
@@ -71,7 +72,7 @@
         const a = document.createElement('a');
         a.href = url;
         a.target = '_blank';
-        a.rel = 'noopener noreferrer';
+        a.download = filename || 'download';
         document.body.appendChild(a);
         a.click();
         setTimeout(() => {
@@ -80,7 +81,7 @@
         return true;
       } catch (err) {
         console.error('Failed to open file:', err);
-        window.open(url, '_blank');
+        // window.open(url, '_blank');
         return false;
       }
     };
@@ -88,3 +89,4 @@
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
+

@@ -32,12 +32,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         child: Column(
           children: [
             FloatingHeaderBar(
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-                onPressed: () => Navigator.pop(context),
-              ),
               title: 'Activity Feed',
               subtitle: 'Real-time audit log & timeline',
+              showBackButton: true,
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded, size: 20),
@@ -54,6 +51,10 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             : activityProvider.activities.isEmpty
                 ? _buildEmptyState(isDark)
                 : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: ClampingScrollPhysics(),
+                    ),
+                    cacheExtent: 1000,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: activityProvider.activities.length,
                     itemBuilder: (context, index) {

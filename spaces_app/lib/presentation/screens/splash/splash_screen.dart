@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
-import '../onboarding/onboarding_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
+import '../auth/login_screen.dart';
 import '../main_navigation_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -28,6 +30,30 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
+      final prefs = await SharedPreferences.getInstance();
+      final isAppLockEnabled = prefs.getBool('isAppLockEnabled') ?? false;
+
+      if (isAppLockEnabled) {
+        final localAuth = LocalAuthentication();
+        bool authenticated = false;
+        try {
+          authenticated = await localAuth.authenticate(
+            localizedReason: 'Unlock Spaces',
+            biometricOnly: false,
+            persistAcrossBackgrounding: true,
+          );
+        } catch (e) {
+          // If auth fails or throws (e.g. user cancels), stay on splash screen or exit
+          return;
+        }
+
+        if (!authenticated) {
+          // Authentication failed/canceled
+          return;
+        }
+      }
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
@@ -35,7 +61,7 @@ class _SplashScreenState extends State<SplashScreen> {
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
     }
   }
@@ -56,7 +82,6 @@ class _SplashScreenState extends State<SplashScreen> {
               width: 88,
               height: 88,
               decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
@@ -66,12 +91,9 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                 ],
               ),
-              child: const Center(
-                child: Icon(
-                  Icons.layers_rounded,
-                  size: 46,
-                  color: Colors.white,
-                ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: Image.asset('assets/icon/app_icon.png', width: 88, height: 88),
               ),
             )
                 .animate()

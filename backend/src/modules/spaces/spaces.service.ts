@@ -5,11 +5,14 @@ import {
   ConflictError,
 } from '../../utils/errors';
 import { buildPaginatedResponse } from '../../utils/helpers';
+import bcrypt from 'bcryptjs';
+import { env } from '../../config/env';
 import type {
   CreateSpaceInput,
   UpdateSpaceInput,
   SpaceQueryInput,
   AddSpaceMemberInput,
+  VerifySpacePasswordInput,
 } from './spaces.schema';
 
 export class SpacesService {
@@ -17,6 +20,11 @@ export class SpacesService {
    * Create a new Space
    */
   async createSpace(userId: string, input: CreateSpaceInput) {
+    let passwordHash = null;
+    if (input.isPrivate && input.password) {
+      passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS);
+    }
+
     const space = await prisma.space.create({
       data: {
         name: input.name,
@@ -25,6 +33,7 @@ export class SpacesService {
         color: input.color || '#6366F1',
         coverUrl: input.coverUrl || null,
         isPrivate: input.isPrivate ?? true,
+        password: passwordHash,
         ownerId: userId,
         members: {
           create: {
@@ -233,15 +242,28 @@ export class SpacesService {
       throw new ForbiddenError('Only Space owners and admins can edit this Space');
     }
 
+    let passwordHash = undefined;
+    if (input.password !== undefined) {
+      if (input.password === null || input.password === '') {
+        passwordHash = null;
+      } else {
+        passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS);
+      }
+    }
+    
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...restInput } = input;
+
     const updated = await prisma.space.update({
       where: { id: spaceId },
       data: {
-        ...input,
+        ...restInput,
+        ...(passwordHash !== undefined ? { password: passwordHash } : {}),
         lastActivityAt: new Date(),
       },
     });
 
-    if (input.name && input.name !== space.name) {
+    if (restInput.name && restInput.name !== space.name) {
       await prisma.activity.create({
         data: {
           userId,
@@ -249,7 +271,7 @@ export class SpacesService {
           action: 'SPACE_RENAMED',
           targetType: 'space',
           targetId: spaceId,
-          metadata: JSON.stringify({ oldName: space.name, newName: input.name }),
+          metadata: JSON.stringify({ oldName: space.name, newName: restInput.name }),
         },
       });
     }
@@ -258,6 +280,30 @@ export class SpacesService {
       ...updated,
       totalSize: updated.totalSize.toString(),
     };
+  }
+
+  /**
+   * Verify space password
+   */
+  async verifySpacePassword(spaceId: string, userId: string, input: VerifySpacePasswordInput) {
+    const space = await prisma.space.findUnique({
+      where: { id: spaceId },
+    });
+
+    if (!space) {
+      throw new NotFoundError('Space not found');
+    }
+
+    if (!space.isPrivate || !space.password) {
+      return { success: true, message: 'Space is not password protected' };
+    }
+
+    const isValid = await bcrypt.compare(input.password, space.password);
+    if (!isValid) {
+      throw new ForbiddenError('Incorrect password');
+    }
+
+    return { success: true };
   }
 
   /**

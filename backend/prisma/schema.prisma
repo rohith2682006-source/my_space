@@ -8,8 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── User & Auth ─────────────────────────────────────────────
@@ -27,6 +28,9 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
+  otpCode       String?   @map("otp_code")
+  otpExpiresAt  DateTime? @map("otp_expires_at")
+
 
   // Relations
   spaces               Space[]
@@ -44,6 +48,8 @@ model User {
   aiUsage              AiUsage[]
   aiCreditTransactions AiCreditTransaction[]
   aiCreditBalance      AiCreditBalance?
+  aiUsageLogs          AiUsageLog[]
+  answerFeedbacks      AnswerFeedback[]
 
   @@map("users")
 }
@@ -143,6 +149,7 @@ model Space {
   coverUrl       String?   @map("cover_url")
   ownerId        String    @map("owner_id")
   isPrivate      Boolean   @default(true) @map("is_private")
+  password       String?   @map("password")
   fileCount      Int       @default(0) @map("file_count")
   totalSize      BigInt    @default(0) @map("total_size") // bytes
   lastActivityAt DateTime  @default(now()) @map("last_activity_at")
@@ -156,6 +163,10 @@ model Space {
   files      File[]
   activities Activity[]
   shareLinks ShareLink[]
+  chunks     Chunk[]
+  fileIndexStatuses FileIndexStatus[]
+  aiUsageLogs AiUsageLog[]
+  answerFeedbacks AnswerFeedback[]
 
   @@index([ownerId])
   @@index([name])
@@ -202,6 +213,10 @@ model File {
   aiSearchEnabled Boolean @default(false) @map("ai_search_enabled")
   indexStatus  String    @default("NOT_INDEXED") @map("index_status")
   indexError   String?   @map("index_error")
+  summary      String?   // Concise executive summary (<= 150 words)
+  keywords     String    @default("[]") // JSON string array of up to 8 keywords
+  pageCount    Int?      @map("page_count")
+  extractedText String?  @map("extracted_text")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
@@ -217,7 +232,9 @@ model File {
   shareLinks  ShareLink[]
   permissions FilePermission[]
   favorites   Favorite[]
-  chunks      FileChunk[]
+  fileChunks  FileChunk[]
+  chunks      Chunk[]
+  fileIndexStatus FileIndexStatus?
 
   @@index([spaceId])
   @@index([uploadedBy])
@@ -585,3 +602,84 @@ model ModelPricing {
   @@index([model, isActive])
   @@map("model_pricing")
 }
+
+// ─── RAG System Models ───────────────────────────────────────
+
+model Chunk {
+  id         String   @id @default(uuid())
+  spaceId    String   @map("space_id")
+  fileId     String   @map("file_id")
+  fileName   String   @map("file_name")
+  location   String   // e.g. "page 3", "slide 12", "image", "00:12:30"
+  content    String
+  embedding  String   // JSON string of float[768] in SQLite; mapped to vector(768) in PostgreSQL
+  embedModel String   @default("text-embedding-004") @map("embed_model")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId])
+  @@index([fileId])
+  @@map("chunks")
+}
+
+model FileIndexStatus {
+  id         String   @id @default(uuid())
+  fileId     String   @unique @map("file_id")
+  spaceId    String   @map("space_id")
+  status     String   @default("pending") // pending, indexing, ready, failed
+  error      String?
+  retryCount Int      @default(0) @map("retry_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  file  File  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([spaceId])
+  @@index([status])
+  @@map("file_index_status")
+}
+
+model AiUsageLog {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  spaceId      String?  @map("space_id")
+  date         DateTime @default(now())
+  stage        String   @default("answer") // rewrite, embed, search, rerank, answer
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  latencyMs    Int      @default(0) @map("latency_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space Space? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([spaceId])
+  @@index([date])
+  @@map("ai_usage_log")
+}
+
+model AnswerFeedback {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  spaceId   String   @map("space_id")
+  question  String
+  answer    String
+  rating    String   // THUMBS_UP, THUMBS_DOWN
+  chunkIds  String   @default("[]") @map("chunk_ids") // JSON array of chunk IDs
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([spaceId])
+  @@index([createdAt])
+  @@map("answer_feedback")
+}
+

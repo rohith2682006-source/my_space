@@ -3,6 +3,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../widgets/top_alert_bar.dart';
+import '../../widgets/settings_container_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -206,32 +207,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            tooltip: 'Back',
-            onPressed: () => Navigator.maybePop(context),
+      child: SettingsScreenScaffold(
+        title: 'Admin Dashboard',
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _fetchAllData,
+            tooltip: 'Refresh',
           ),
-          title: const Text('Admin Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: _fetchAllData,
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              indicatorColor: AppColors.accent,
+              tabs: [
+                Tab(icon: Icon(Icons.dashboard_outlined), text: 'Overview'),
+                Tab(icon: Icon(Icons.account_balance_wallet_outlined), text: 'Financials & Units'),
+                Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Operating Costs'),
+              ],
             ),
-          ],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            indicatorColor: AppColors.accent,
-            tabs: [
-              Tab(icon: Icon(Icons.dashboard_outlined), text: 'Overview'),
-              Tab(icon: Icon(Icons.account_balance_wallet_outlined), text: 'Financials & Units'),
-              Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Operating Costs'),
-            ],
-          ),
-        ),
-        body: _isLoading
+            Expanded(
+              child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
                 ? Center(
@@ -263,6 +264,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       _buildOperatingCostsTab(isDark),
                     ],
                   ),
+            ),
+          ],
+        ),
       ),
     );
   }

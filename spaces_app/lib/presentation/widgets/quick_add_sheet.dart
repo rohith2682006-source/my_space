@@ -39,11 +39,12 @@ class QuickAddSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'Add to Space',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
             ),
           ),
           const SizedBox(height: 16),
@@ -120,9 +121,10 @@ class QuickAddSheet extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),

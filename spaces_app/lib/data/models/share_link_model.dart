@@ -42,7 +42,7 @@ class ShareLinkModel {
     }
 
     final token = json['token'] ?? '';
-    final defaultUrl = 'http://localhost:3000/share/$token';
+    final defaultUrl = 'https://my-space-frontend-n9tx.onrender.com/share/$token';
 
     return ShareLinkModel(
       id: json['id'] ?? '',

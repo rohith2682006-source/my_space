@@ -13,14 +13,15 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  JWT_ACCESS_EXPIRY: z.string().default('15m'),
-  JWT_REFRESH_EXPIRY: z.string().default('7d'),
+  JWT_ACCESS_EXPIRY: z.string().default('90d'),
+  JWT_REFRESH_EXPIRY: z.string().default('90d'),
 
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   APP_URL: z.string().default('http://localhost:3000'),
 
   AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:8000'),
   AI_SERVICE_TOKEN: z.string().default(''),
+  RAG_ENABLED: z.string().optional().transform((v) => v !== 'false' && v !== '0').default('true'),
 
   MAX_FILE_SIZE_MB: z.coerce.number().default(500),
   UPLOAD_DIR: z.string().default('./uploads'),
@@ -30,7 +31,7 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),
 
-  BCRYPT_SALT_ROUNDS: z.coerce.number().default(12),
+  BCRYPT_SALT_ROUNDS: z.coerce.number().default(10),
 });
 
 const parsed = envSchema.safeParse(process.env);

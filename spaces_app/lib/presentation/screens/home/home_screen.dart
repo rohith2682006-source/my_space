@@ -9,14 +9,17 @@ import '../../../providers/ai_credits_provider.dart';
 import '../../widgets/space_card.dart';
 import '../spaces/create_space_dialog.dart';
 import '../spaces/space_detail_screen.dart';
-import '../activity/activity_feed_screen.dart';
-import '../sharing/my_links_screen.dart';
+import '../spaces/vault_lock_screen.dart';
 import '../sharing/share_dialog.dart';
-import '../profile/profile_screen.dart';
 import '../ai/ai_chat_screen.dart';
 import '../ai/ai_usage_screen.dart';
 import '../search/deep_search_screen.dart';
+import '../search/search_screen.dart';
+import '../../../core/utils/app_routes.dart';
 import '../../widgets/top_alert_bar.dart';
+import '../../widgets/navigation_tab_controller.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../../core/services/intent_receiver_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,6 +33,17 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    if (!kIsWeb) {
+      IntentReceiverService.instance.initialize(context);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (!kIsWeb) {
+      IntentReceiverService.instance.dispose();
+    }
+    super.dispose();
   }
 
   void _loadData() {
@@ -61,145 +75,219 @@ class _HomeScreenState extends State<HomeScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     final width = MediaQuery.of(context).size.width;
+    final isDesktop = width >= 850;
     final crossAxisCount = width > 1100 ? 4 : (width > 700 ? 3 : 2);
 
-    return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async => _loadData(),
-          child: CustomScrollView(
+    Widget content = RefreshIndicator(
+      onRefresh: () async => _loadData(),
+      child: Focus(
+        autofocus: true,
+        child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            cacheExtent: 1000,
             slivers: [
-              // Split Floating Top Header with Futuristic AI Search
+              // Removed SliverAppBar as it is now in MainNavigationScreen
+              // ── Dashboard Search Bar ──────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                  child: _buildSplitFloatingHeader(
-                    context,
-                    auth,
-                    themeProvider,
-                    isDark,
-                    width,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (_, __, ___) => const SearchScreen(),
+                        transitionsBuilder: (_, animation, __, child) {
+                          return FadeTransition(
+                            opacity: CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOut,
+                            ),
+                            child: child,
+                          );
+                        },
+                        transitionDuration: const Duration(milliseconds: 250),
+                      ),
+                    ),
+                    child: Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? AppColors.darkSurface
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.14)
+                              : AppColors.lightBorder,
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.35 : 0.05,
+                            ),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 18),
+                          Icon(
+                            Icons.search_rounded,
+                            size: 22,
+                            color: isDark
+                                ? AppColors.primaryLight
+                                : AppColors.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Search spaces, files, notes...',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: isDark
+                                  ? Colors.white60
+                                  : Colors.black54,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
 
-              // Floating Hero Banner
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.primary.withOpacity(isDark ? 0.25 : 0.10),
-                          AppColors.accent.withOpacity(isDark ? 0.18 : 0.06),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: AppColors.primary.withOpacity(
-                          isDark ? 0.35 : 0.20,
+              SliverSafeArea(
+                top: false,
+                bottom: false,
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // Context over Folders Banner
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
                         ),
-                        width: 1.2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withOpacity(0.08),
-                          blurRadius: 20,
-                          offset: const Offset(0, 6),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? AppColors.darkCard
+                              : AppColors.lightCard,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.12)
+                                : AppColors.lightBorder,
+                            width: 1.0,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(isDark ? 0.05 : 0.03),
+                              blurRadius: 10,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Context over Folders',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Context over Folders',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Create a Space and keep everything related to it together.',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      height: 1.2,
+                                      color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Create a Space for what matters and keep everything related to it together.',
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.add_rounded, size: 14),
+                              label: const Text(
+                                'New',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  height: 1.4,
-                                  color: isDark
-                                      ? AppColors.darkTextSecondary
-                                      : AppColors.lightTextSecondary,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('New Space'),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                              style: ElevatedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                minimumSize: const Size(50, 32),
+                              ),
+                              onPressed: _openCreateSpace,
                             ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                          onPressed: _openCreateSpace,
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ),
 
-              // ── AI WIDGETS ──────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: _AiWidgetsSection(),
+                    // ── AI WIDGETS REMOVED ──────────────────────────────────────────────
+                    const SizedBox(height: 12),
+                  ]),
+                ),
               ),
 
               // "YOUR SPACES" Section Title
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         children: [
-                          const Text(
-                            'YOUR SPACES',
+                          Text(
+                            'Spaces',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 18,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: 1.2,
-                              color: AppColors.primary,
+                              letterSpacing: 0.5,
+                              color: isDark ? Colors.white : AppColors.lightTextPrimary,
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 12),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
+                              horizontal: 10,
+                              vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(10),
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.15)
+                                  : AppColors.primary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               '${spacesProvider.spaces.length}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? Colors.white : AppColors.primary,
                               ),
                             ),
                           ),
@@ -228,21 +316,24 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 80,
                             height: 80,
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.12),
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.12)
+                                  : AppColors.primary.withOpacity(0.10),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.layers_clear_rounded,
                               size: 40,
-                              color: AppColors.primary,
+                              color: isDark ? Colors.white : AppColors.primary,
                             ),
                           ),
                           const SizedBox(height: 20),
-                          const Text(
+                          Text(
                             'Your Spaces are empty',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : AppColors.lightTextPrimary,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -251,9 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                              color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -269,26 +358,49 @@ class _HomeScreenState extends State<HomeScreen> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
                   sliver: SliverGrid(
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 1.15,
+                      crossAxisSpacing: width < 450 ? 12 : 16,
+                      mainAxisSpacing: width < 450 ? 12 : 16,
+                      childAspectRatio: width < 450 ? 0.95 : 0.9,
                     ),
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final space = spacesProvider.spaces[index];
                       return SpaceCard(
                         space: space,
                         onTap: () {
-                          spacesProvider.setActiveSpace(space);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => SpaceDetailScreen(space: space),
-                            ),
-                          ).then((_) => _loadData());
+                          if (space.isPrivate) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => VaultLockScreen(
+                                  spaceId: space.id,
+                                  spaceName: space.name,
+                                  onUnlocked: (lockContext) {
+                                    spacesProvider.setActiveSpace(space);
+                                    Navigator.of(lockContext)
+                                        .pushReplacement<void, void>(
+                                          AppRoute<void>(
+                                            builder: (_) =>
+                                                SpaceDetailScreen(space: space),
+                                          ),
+                                        )
+                                        .then((_) => _loadData());
+                                  },
+                                ),
+                              ),
+                            );
+                          } else {
+                            spacesProvider.setActiveSpace(space);
+                            Navigator.push(
+                              context,
+                              AppRoute(
+                                builder: (_) => SpaceDetailScreen(space: space),
+                              ),
+                            ).then((_) => _loadData());
+                          }
                         },
                         onMoreTap: () {
                           showDialog(
@@ -303,310 +415,26 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _buildSplitFloatingHeader(
-    BuildContext context,
-    AuthProvider auth,
-    ThemeProvider themeProvider,
-    bool isDark,
-    double screenWidth,
-  ) {
-    final isWide = screenWidth >= 960;
-
-    if (isWide) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Left Floating Profile Island
-          _buildLeftProfilePill(context, auth, isDark),
-          const SizedBox(width: 14),
-
-          // Futuristic Floating AI Deep Search Island
-          Expanded(
-            child: _FuturisticAiSearchBar(
-              onSubmitted: (query) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AiChatScreen(initialQuery: query),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Right Floating Actions Island
-          _buildRightActionsPill(context, themeProvider, isDark),
-        ],
+    if (!isDesktop) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragEnd: (details) {
+          // Swipe from left to right on mobile to show the menu bar
+          if ((details.primaryVelocity ?? 0) > 200) {
+            NavigationTabController.of(context)?.onOpenDrawer?.call();
+            Scaffold.maybeOf(context)?.openDrawer();
+          }
+        },
+        child: content,
       );
     }
 
-    // Tablet / Mobile: Dual row layout for optimal ergonomics
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Left Floating Profile Island
-            Flexible(child: _buildLeftProfilePill(context, auth, isDark)),
-            const SizedBox(width: 8),
-
-            // Right Floating Actions Island
-            _buildRightActionsPill(context, themeProvider, isDark),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        // Prominent Futuristic Floating AI Search Bar
-        _FuturisticAiSearchBar(
-          onSubmitted: (query) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AiChatScreen(initialQuery: query),
-              ),
-            );
-          },
-        ),
-      ],
-    );
+    return content;
   }
 
-  Widget _buildLeftProfilePill(
-    BuildContext context,
-    AuthProvider auth,
-    bool isDark,
-  ) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xCC111827) : const Color(0xF2FFFFFF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.black.withValues(alpha: 0.08),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.07),
-                blurRadius: 18,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(11),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.35),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          auth.user?.initials ?? 'SP',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: -1,
-                        bottom: -1,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark
-                                  ? const Color(0xFF111827)
-                                  : Colors.white,
-                              width: 1.8,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Hello, ${auth.user?.firstName ?? 'Organizer'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF8B5CF6),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Spaces Cloud',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 4),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRightActionsPill(
-    BuildContext context,
-    ThemeProvider themeProvider,
-    bool isDark,
-  ) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xCC111827) : const Color(0xF2FFFFFF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.black.withValues(alpha: 0.08),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.07),
-                blurRadius: 18,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.bolt_rounded,
-                  size: 19,
-                  color: Color(0xFF8B5CF6),
-                ),
-                tooltip: 'Activity Feed',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ActivityFeedScreen(),
-                    ),
-                  );
-                },
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.link_rounded,
-                  size: 19,
-                  color: AppColors.primary,
-                ),
-                tooltip: 'My Share Links',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MyLinksScreen()),
-                  );
-                },
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                  size: 19,
-                ),
-                tooltip: 'Toggle Theme',
-                onPressed: () => themeProvider.toggleTheme(),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.settings_outlined, size: 19),
-                tooltip: 'Account Settings',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // _buildSplitFloatingHeader was removed since we use SliverAppBar instead
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -621,7 +449,7 @@ class _AiWidgetsSection extends StatelessWidget {
     final balance = credits.balance;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -632,14 +460,16 @@ class _AiWidgetsSection extends StatelessWidget {
               GestureDetector(
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AiUsageScreen()),
+                  AppRoute(builder: (_) => const AiUsageScreen()),
                 ),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.primary.withValues(alpha: 0.30),
@@ -651,30 +481,33 @@ class _AiWidgetsSection extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.bolt_rounded,
-                          color: Colors.white, size: 14),
-                      const SizedBox(width: 5),
+                      const Icon(
+                        Icons.bolt_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
                       Text(
                         balance != null
                             ? '${balance.balance} credits'
                             : 'AI Credits',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 14),
               Text(
                 'AI FEATURES',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
+                  letterSpacing: 1.2,
                   color: isDark
                       ? AppColors.darkTextTertiary
                       : AppColors.lightTextTertiary,
@@ -685,77 +518,83 @@ class _AiWidgetsSection extends StatelessWidget {
                 GestureDetector(
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const AiUsageScreen()),
+                    AppRoute(builder: (_) => const AiUsageScreen()),
                   ),
                   child: Text(
                     'View usage →',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 13,
                       color: AppColors.primary,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
 
           // ── Quick-action cards ────────────────────────────────────────────
           SizedBox(
-            height: 94,
-            child: Row(
-              children: [
-                // Ask AI
-                Expanded(
-                  child: _AiActionCard(
-                    isDark: isDark,
-                    icon: Icons.chat_bubble_outline_rounded,
-                    iconGradient: const LinearGradient(
-                      colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
-                    ),
-                    label: 'Ask AI',
-                    subtitle: 'Chat with your files',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AiChatScreen()),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Deep Search
-                Expanded(
-                  child: _AiActionCard(
-                    isDark: isDark,
-                    icon: Icons.travel_explore_rounded,
-                    iconGradient: const LinearGradient(
-                      colors: [Color(0xFF06B6D4), Color(0xFF3B82F6)],
-                    ),
-                    label: 'Deep Search',
-                    subtitle: 'AI-powered answers',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const DeepSearchScreen()),
+            height: 115,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Ask AI
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.4,
+                    child: _AiActionCard(
+                      isDark: isDark,
+                      icon: Icons.chat_bubble_outline_rounded,
+                      iconGradient: const LinearGradient(
+                        colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                      ),
+                      label: 'Ask AI',
+                      subtitle: 'Chat with your files',
+                      onTap: () => Navigator.push(
+                        context,
+                        AppRoute(builder: (_) => const AiChatScreen()),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // AI Usage
-                Expanded(
-                  child: _AiActionCard(
-                    isDark: isDark,
-                    icon: Icons.insights_rounded,
-                    iconGradient: const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    ),
-                    label: 'AI Usage',
-                    subtitle: 'Credits & history',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AiUsageScreen()),
+                  const SizedBox(width: 10),
+                  // Deep Search
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.4,
+                    child: _AiActionCard(
+                      isDark: isDark,
+                      icon: Icons.travel_explore_rounded,
+                      iconGradient: const LinearGradient(
+                        colors: [Color(0xFF06B6D4), Color(0xFF3B82F6)],
+                      ),
+                      label: 'Deep Search',
+                      subtitle: 'AI-powered answers',
+                      onTap: () => Navigator.push(
+                        context,
+                        AppRoute(builder: (_) => const DeepSearchScreen()),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  // AI Usage
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.4,
+                    child: _AiActionCard(
+                      isDark: isDark,
+                      icon: Icons.insights_rounded,
+                      iconGradient: const LinearGradient(
+                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      ),
+                      label: 'AI Usage',
+                      subtitle: 'Credits & history',
+                      onTap: () => Navigator.push(
+                        context,
+                        AppRoute(builder: (_) => const AiUsageScreen()),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -785,10 +624,12 @@ class _AiActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final surface = isDark ? AppColors.darkCard : AppColors.lightCard;
     final border = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-    final textSecondary =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final textPrimary = isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
+    final textSecondary = isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
 
     return GestureDetector(
       onTap: onTap,
@@ -812,13 +653,13 @@ class _AiActionCard extends StatelessWidget {
           children: [
             // Icon with gradient background
             Container(
-              width: 32,
-              height: 32,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 gradient: iconGradient,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: Colors.white, size: 16),
+              child: Icon(icon, color: Colors.white, size: 22),
             ),
             // Labels
             Column(
@@ -828,244 +669,20 @@ class _AiActionCard extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: textPrimary,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 10.5,
-                  ),
+                  style: TextStyle(color: textSecondary, fontSize: 12.5),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _FuturisticAiSearchBar extends StatefulWidget {
-  final ValueChanged<String>? onSubmitted;
-
-  const _FuturisticAiSearchBar({
-    this.onSubmitted,
-  });
-
-  @override
-  State<_FuturisticAiSearchBar> createState() => _FuturisticAiSearchBarState();
-}
-
-class _FuturisticAiSearchBarState extends State<_FuturisticAiSearchBar> {
-  bool _isHovered = false;
-  bool _hasFocus = false;
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode.addListener(() {
-      setState(() => _hasFocus = _focusNode.hasFocus);
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _handleSubmit() {
-    final query = _controller.text.trim();
-    if (query.isNotEmpty) {
-      widget.onSubmitted?.call(query);
-      _controller.clear();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.text,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: LinearGradient(
-            colors: isDark
-                ? [
-                    const Color(0xFF1E1B4B).withValues(
-                      alpha: _isHovered ? 0.85 : 0.65,
-                    ),
-                    const Color(0xFF111827).withValues(alpha: 0.90),
-                    const Color(0xFF0F172A).withValues(alpha: 0.85),
-                  ]
-                : [
-                    const Color(0xFFEEF2FF).withValues(alpha: 0.90),
-                    const Color(0xFFF8FAFC).withValues(alpha: 0.95),
-                    const Color(0xFFECFEFF).withValues(alpha: 0.90),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(
-            color: (_isHovered || _hasFocus)
-                ? const Color(0xFF8B5CF6).withValues(alpha: _hasFocus ? 0.80 : 0.65)
-                : (isDark
-                    ? const Color(0xFF6366F1).withValues(alpha: 0.35)
-                    : const Color(0xFF8B5CF6).withValues(alpha: 0.28)),
-            width: (_isHovered || _hasFocus) ? 1.5 : 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF8B5CF6).withValues(
-                alpha: _hasFocus
-                    ? (isDark ? 0.40 : 0.25)
-                    : _isHovered
-                        ? (isDark ? 0.30 : 0.18)
-                        : (isDark ? 0.16 : 0.08),
-              ),
-              blurRadius: _hasFocus ? 28 : (_isHovered ? 24 : 14),
-              offset: const Offset(0, 4),
-              spreadRadius: (_isHovered || _hasFocus) ? 1 : 0,
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.05),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  // Decorative AI Glowing Badge (non-interactive)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF8B5CF6),
-                          Color(0xFF6366F1),
-                          Color(0xFF06B6D4),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.45),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        SizedBox(width: 5),
-                        Text(
-                          '✦ AI',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // Search Text Field — takes all available space
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      onSubmitted: (_) => _handleSubmit(),
-                      textInputAction: TextInputAction.search,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? Colors.white : const Color(0xFF0F172A),
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Search spaces, files, notes or ask AI...',
-                        hintStyle: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w400,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        isDense: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
-                  ),
-
-                  // Send / Search Action Button
-                  InkWell(
-                    onTap: _handleSubmit,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF8B5CF6).withValues(alpha: 0.20)
-                            : const Color(0xFF6366F1).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 16,
-                          color: Color(0xFF8B5CF6),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

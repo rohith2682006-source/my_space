@@ -30,6 +30,7 @@ import { realtimeRoutes } from './modules/realtime/realtime.routes';
 
 export function createApp(): Express {
   const app = express();
+  app.set('trust proxy', 1); // Trust the reverse proxy (Render) for accurate IP rate limiting
 
   // Trust one reverse-proxy hop in front of this application.
   // This must match the actual Render deployment topology.

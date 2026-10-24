@@ -7,6 +7,7 @@ import {
   updateSpaceSchema,
   spaceQuerySchema,
   addSpaceMemberSchema,
+  verifySpacePasswordSchema,
 } from './spaces.schema';
 
 const router = Router();
@@ -18,6 +19,7 @@ router.post('/', validate(createSpaceSchema), spacesController.createSpace);
 router.get('/', validate(spaceQuerySchema, 'query'), spacesController.listSpaces);
 router.get('/:id', spacesController.getSpaceById);
 router.patch('/:id', validate(updateSpaceSchema), spacesController.updateSpace);
+router.post('/:id/verify-password', validate(verifySpacePasswordSchema), spacesController.verifyPassword);
 router.delete('/:id', spacesController.deleteSpace);
 
 // Space members

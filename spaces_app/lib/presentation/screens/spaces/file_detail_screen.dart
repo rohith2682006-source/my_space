@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../widgets/unified_back_button.dart';
 import 'package:provider/provider.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
@@ -47,10 +48,15 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
         final enabled = event.data['aiSearchEnabled'] == true;
         final status =
             event.data['indexStatus']?.toString() ?? _file.indexStatus;
-        setState(() =>
-            _file = _file.copyWith(aiSearchEnabled: enabled, indexStatus: status));
+        setState(
+          () => _file = _file.copyWith(
+            aiSearchEnabled: enabled,
+            indexStatus: status,
+          ),
+        );
       } else if (event.event == 'AI_READY' || event.event == 'AI_FAILED') {
-        final status = event.data['status']?.toString() ??
+        final status =
+            event.data['status']?.toString() ??
             (event.event == 'AI_READY' ? 'READY' : 'FAILED');
         setState(() => _file = _file.copyWith(indexStatus: status));
         _pollTimer?.cancel();
@@ -136,22 +142,23 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final textPrimary = isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
 
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: UnifiedBackButton(),
         title: Text(
           _file.name,
           style: TextStyle(
-              color: textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+            color: textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
@@ -161,16 +168,18 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
               icon: ShaderMask(
                 shaderCallback: (b) =>
                     AppColors.primaryGradient.createShader(b),
-                child: const Icon(Icons.auto_awesome_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
               tooltip: 'Deep Search this file',
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => DeepSearchScreen(
-                    initialQuery: 'Summarize ${_file.name}',
-                  ),
+                  builder: (_) =>
+                      DeepSearchScreen(initialQuery: 'Summarize ${_file.name}'),
                 ),
               ),
             ),
@@ -245,10 +254,12 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
   Widget _buildAiAccessCard(bool isDark) {
     final surface = isDark ? AppColors.darkCard : AppColors.lightCard;
     final border = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-    final textSecondary =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final textPrimary = isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
+    final textSecondary = isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
 
     final bool isIndexable = _isIndexable;
     final statusInfo = _indexStatusInfo;
@@ -266,9 +277,10 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
         boxShadow: _file.aiSearchEnabled
             ? [
                 BoxShadow(
-                    color: AppColors.primary.withAlpha(20),
-                    blurRadius: 20,
-                    offset: const Offset(0, 4))
+                  color: AppColors.primary.withAlpha(20),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
               ]
             : null,
       ),
@@ -281,8 +293,11 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
               ShaderMask(
                 shaderCallback: (b) =>
                     AppColors.primaryGradient.createShader(b),
-                child: const Icon(Icons.auto_awesome_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -301,8 +316,7 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                       isIndexable
                           ? 'Enable to search this file with AI'
                           : 'This file type is not supported for AI Search',
-                      style:
-                          TextStyle(color: textSecondary, fontSize: 12),
+                      style: TextStyle(color: textSecondary, fontSize: 12),
                     ),
                   ],
                 ),
@@ -326,7 +340,7 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                     : Switch(
                         value: _file.aiSearchEnabled,
                         onChanged: _toggleAiAccess,
-                        activeColor: AppColors.primary,
+                        activeThumbColor: AppColors.primary,
                       ),
             ],
           ),
@@ -350,7 +364,7 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                               color: statusInfo.color.withAlpha(120),
                               blurRadius: 6,
                               spreadRadius: 2,
-                            )
+                            ),
                           ]
                         : null,
                   ),
@@ -383,8 +397,7 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                   Expanded(
                     child: Text(
                       'Indexing failed. Try disabling and re-enabling AI Search.',
-                      style:
-                          TextStyle(color: textSecondary, fontSize: 12),
+                      style: TextStyle(color: textSecondary, fontSize: 12),
                     ),
                   ),
                 ],
@@ -398,9 +411,10 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => DeepSearchScreen(
-                            initialQuery:
-                                'Summarize ${_file.name}')),
+                      builder: (_) => DeepSearchScreen(
+                        initialQuery: 'Summarize ${_file.name}',
+                      ),
+                    ),
                   ),
                   icon: const Icon(Icons.search_rounded, size: 16),
                   label: const Text('Deep Search this file'),
@@ -408,7 +422,8 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
@@ -422,10 +437,12 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
   Widget _buildInfoCard(bool isDark) {
     final surface = isDark ? AppColors.darkCard : AppColors.lightCard;
     final border = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-    final textSecondary =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final textPrimary = isDark
+        ? AppColors.darkTextPrimary
+        : AppColors.lightTextPrimary;
+    final textSecondary = isDark
+        ? AppColors.darkTextSecondary
+        : AppColors.lightTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -437,42 +454,64 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('File Info',
-              style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700)),
+          Text(
+            'File Info',
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 14),
-          _infoRow('Type', _file.extension.toUpperCase(), textPrimary,
-              textSecondary),
+          _infoRow(
+            'Type',
+            _file.extension.toUpperCase(),
+            textPrimary,
+            textSecondary,
+          ),
           _infoRow('Size', _formatSize(_file.size), textPrimary, textSecondary),
-          _infoRow('Uploaded', _formatDate(_file.createdAt), textPrimary,
-              textSecondary),
-          _infoRow('Modified', _formatDate(_file.updatedAt), textPrimary,
-              textSecondary),
+          _infoRow(
+            'Uploaded',
+            _formatDate(_file.createdAt),
+            textPrimary,
+            textSecondary,
+          ),
+          _infoRow(
+            'Modified',
+            _formatDate(_file.updatedAt),
+            textPrimary,
+            textSecondary,
+          ),
         ],
       ),
     );
   }
 
   Widget _infoRow(
-      String label, String value, Color textPrimary, Color textSecondary) {
+    String label,
+    String value,
+    Color textPrimary,
+    Color textSecondary,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           SizedBox(
             width: 80,
-            child: Text(label,
-                style: TextStyle(color: textSecondary, fontSize: 13)),
+            child: Text(
+              label,
+              style: TextStyle(color: textSecondary, fontSize: 13),
+            ),
           ),
           Expanded(
             child: Text(
               value,
               style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500),
+                color: textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -499,7 +538,8 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
             label: 'Open File',
             subtitle: 'Open with default system application',
             color: AppColors.primary,
-            onTap: () => NativeFileService.openFileWithNativeApp(context, _file),
+            onTap: () =>
+                NativeFileService.openFileWithNativeApp(context, _file),
           ),
           const Divider(height: 1),
           _actionTile(
@@ -508,14 +548,6 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
             subtitle: 'Send original file to apps (WhatsApp, Telegram, etc.)',
             color: AppColors.primary,
             onTap: () => NativeFileService.shareOriginalFile(context, _file),
-          ),
-          const Divider(height: 1),
-          _actionTile(
-            icon: Icons.link_rounded,
-            label: 'Share Link',
-            subtitle: 'Generate and send a secure share link',
-            color: AppColors.primary,
-            onTap: () => NativeFileService.shareSecureLink(context, _file),
           ),
           const Divider(height: 1),
           _actionTile(
@@ -538,8 +570,10 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
             label: 'Move to Trash',
             color: AppColors.error,
             onTap: () async {
-              final filesProvider =
-                  Provider.of<FilesProvider>(context, listen: false);
+              final filesProvider = Provider.of<FilesProvider>(
+                context,
+                listen: false,
+              );
               final success = await filesProvider.trashFile(_file.id);
               if (mounted && success) {
                 Navigator.pop(context);
@@ -576,9 +610,14 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
             onPressed: () async {
               final newName = controller.text.trim();
               if (newName.isNotEmpty && newName != _file.name) {
-                final filesProvider =
-                    Provider.of<FilesProvider>(context, listen: false);
-                final success = await filesProvider.renameFile(_file.id, newName);
+                final filesProvider = Provider.of<FilesProvider>(
+                  context,
+                  listen: false,
+                );
+                final success = await filesProvider.renameFile(
+                  _file.id,
+                  newName,
+                );
                 if (mounted && success) {
                   setState(() => _file = _file.copyWith(name: newName));
                   Navigator.pop(ctx);
@@ -641,8 +680,11 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: color.withOpacity(0.6), size: 18),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: color.withOpacity(0.6),
+              size: 18,
+            ),
           ],
         ),
       ),
@@ -698,25 +740,42 @@ class _FileDetailScreenState extends State<FileDetailScreen> {
     switch (_file.indexStatus) {
       case 'READY':
         return _IndexStatusInfo(
-            label: 'AI Ready — Searchable', color: AppColors.success);
+          label: 'AI Ready — Searchable',
+          color: AppColors.success,
+        );
       case 'INDEXING':
         return _IndexStatusInfo(
-            label: 'Indexing…', color: AppColors.primary, pulse: true);
+          label: 'Indexing…',
+          color: AppColors.primary,
+          pulse: true,
+        );
       case 'QUEUED':
         return _IndexStatusInfo(
-            label: 'Queued for indexing', color: AppColors.warning, pulse: true);
+          label: 'Queued for indexing',
+          color: AppColors.warning,
+          pulse: true,
+        );
       case 'PROCESSING':
         return _IndexStatusInfo(
-            label: 'Processing…', color: AppColors.primary, pulse: true);
+          label: 'Processing…',
+          color: AppColors.primary,
+          pulse: true,
+        );
       case 'FAILED':
         return _IndexStatusInfo(
-            label: 'Indexing failed', color: AppColors.error);
+          label: 'Indexing failed',
+          color: AppColors.error,
+        );
       case 'OCR_REQUIRED':
         return _IndexStatusInfo(
-            label: 'OCR required — not searchable', color: AppColors.warning);
+          label: 'OCR required — not searchable',
+          color: AppColors.warning,
+        );
       default:
         return _IndexStatusInfo(
-            label: 'Not indexed', color: AppColors.darkTextTertiary);
+          label: 'Not indexed',
+          color: AppColors.darkTextTertiary,
+        );
     }
   }
 
@@ -739,7 +798,9 @@ class _IndexStatusInfo {
   final String label;
   final Color color;
   final bool pulse;
-  const _IndexStatusInfo(
-      {required this.label, required this.color, this.pulse = false});
+  const _IndexStatusInfo({
+    required this.label,
+    required this.color,
+    this.pulse = false,
+  });
 }
-

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 class NavigationTabController extends InheritedWidget {
   final int currentIndex;
   final ValueChanged<int> onSelectTab;
+  final VoidCallback? onOpenDrawer;
 
   const NavigationTabController({
     super.key,
     required this.currentIndex,
     required this.onSelectTab,
+    this.onOpenDrawer,
     required super.child,
   });
 

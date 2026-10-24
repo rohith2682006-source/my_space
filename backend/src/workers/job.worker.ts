@@ -79,6 +79,19 @@ async function handleDocumentIndex(p: DocumentIndexPayload): Promise<void> {
     data: { indexStatus: 'INDEXING', indexError: null },
   });
 
+  await prisma.fileIndexStatus.upsert({
+    where: { fileId: p.fileId },
+    create: {
+      fileId: p.fileId,
+      spaceId: p.spaceId,
+      status: 'indexing',
+    },
+    update: {
+      status: 'indexing',
+      error: null,
+    },
+  }).catch(() => {});
+
   let content: Buffer;
   if (p.isNote && p.noteContent) {
     content = Buffer.from(p.noteContent, 'utf-8');
@@ -91,6 +104,19 @@ async function handleDocumentIndex(p: DocumentIndexPayload): Promise<void> {
       where: { id: p.fileId },
       data: { indexStatus: 'FAILED', indexError: 'AI service token not configured.' },
     });
+    await prisma.fileIndexStatus.upsert({
+      where: { fileId: p.fileId },
+      create: {
+        fileId: p.fileId,
+        spaceId: p.spaceId,
+        status: 'failed',
+        error: 'AI service token not configured.',
+      },
+      update: {
+        status: 'failed',
+        error: 'AI service token not configured.',
+      },
+    }).catch(() => {});
     throw new Error('AI_SERVICE_TOKEN not set');
   }
 
@@ -116,7 +142,21 @@ async function handleDocumentIndex(p: DocumentIndexPayload): Promise<void> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(body.detail ?? `AI service HTTP ${res.status}`);
+    const errMsg = body.detail ?? `AI service HTTP ${res.status}`;
+    await prisma.fileIndexStatus.upsert({
+      where: { fileId: p.fileId },
+      create: {
+        fileId: p.fileId,
+        spaceId: p.spaceId,
+        status: 'failed',
+        error: errMsg,
+      },
+      update: {
+        status: 'failed',
+        error: errMsg,
+      },
+    }).catch(() => {});
+    throw new Error(errMsg);
   }
 }
 
@@ -125,12 +165,15 @@ interface AiCleanupPayload {
 }
 
 async function handleAiCleanup(p: AiCleanupPayload): Promise<void> {
-  await prisma.fileChunk.deleteMany({ where: { fileId: p.fileId } });
+  await prisma.chunk.deleteMany({ where: { fileId: p.fileId } }).catch(() => {});
+  await prisma.fileChunk.deleteMany({ where: { fileId: p.fileId } }).catch(() => {});
+  await prisma.fileIndexStatus.deleteMany({ where: { fileId: p.fileId } }).catch(() => {});
   await prisma.file.updateMany({
     where: { id: p.fileId },
     data: { indexStatus: 'NOT_INDEXED', indexError: null },
   });
 }
+
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 

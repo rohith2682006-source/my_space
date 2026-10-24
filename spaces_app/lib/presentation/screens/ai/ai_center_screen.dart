@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/unified_back_button.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/ai_credits_provider.dart';
@@ -40,11 +41,7 @@ class _AiCenterScreenState extends State<AiCenterScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          tooltip: 'Back',
-          onPressed: () => Navigator.maybePop(context),
-        ),
+        leading: UnifiedBackButton(),
         title: const Text('AI Center', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           Padding(
@@ -174,25 +171,6 @@ class _AiCenterScreenState extends State<AiCenterScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Quick Search Tile
-          _buildActionCard(
-            title: 'Quick Search',
-            subtitle: 'Fast keyword & vector retrieval across all indexed documents.',
-            costLabel: '1 Credit / query',
-            icon: Icons.search_rounded,
-            color: const Color(0xFF06B6D4),
-            isDark: isDark,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AiChatScreen(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-
           // Deep Search Tile
           _buildActionCard(
             title: 'Deep RAG Search & Synthesis',
@@ -204,7 +182,7 @@ class _AiCenterScreenState extends State<AiCenterScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AiChatScreen()),
+                MaterialPageRoute(builder: (_) => const AiChatScreen(initialMode: 'deep')),
               );
             },
           ),

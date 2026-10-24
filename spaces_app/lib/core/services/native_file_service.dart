@@ -10,9 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/api_client.dart';
 import '../api/api_endpoints.dart';
 import '../theme/app_colors.dart';
-import '../utils/file_cache_stub.dart' if (dart.library.io) '../utils/file_cache_io.dart';
-import '../utils/desktop_integration_stub.dart'
-    if (dart.library.js_interop) '../utils/desktop_integration_web.dart';
+import '../utils/file_cache_stub.dart'
+    if (dart.library.io) '../utils/file_cache_io.dart';
 import '../utils/mime_types.dart';
 import '../../data/models/file_model.dart';
 import '../../data/services/auth_storage.dart';
@@ -43,7 +42,10 @@ class NativeFileService {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (context.mounted) {
-          TopAlertBar.showError(context, 'Could not launch URL: ${file.content}');
+          TopAlertBar.showError(
+            context,
+            'Could not launch URL: ${file.content}',
+          );
         }
       }
       return;
@@ -51,15 +53,13 @@ class NativeFileService {
 
     // 3. Web environment
     if (kIsWeb) {
-      final token = await AuthStorage.getAccessToken();
+      final token = AuthStorage.cachedToken;
       final previewUrl =
           '${ApiEndpoints.filePreview(file.id)}${token != null ? '?token=$token' : ''}';
-      try {
-        openFileInWeb(previewUrl, file.name);
-      } catch (_) {
-        final uri = Uri.parse(previewUrl);
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+
+      // Use url_launcher synchronously (without await) to prevent popup blockers on web
+      final uri = Uri.parse(previewUrl);
+      launchUrl(uri, webOnlyWindowName: '_blank');
       return;
     }
 
@@ -97,7 +97,6 @@ class NativeFileService {
             break;
         }
       }
-
     } catch (e) {
       if (context.mounted) {
         TopAlertBar.showError(
@@ -119,14 +118,10 @@ class NativeFileService {
     // 1. Text notes & links
     if (file.category == 'NOTE' || file.category == 'LINK') {
       final text = file.content?.isNotEmpty == true ? file.content! : file.name;
-      await SharePlus.instance.share(
-        ShareParams(
-          text: text,
-          subject: file.name,
-          title: file.name,
-          sharePositionOrigin: sharePositionOrigin,
-          downloadFallbackEnabled: false,
-        ),
+      await Share.share(
+        text,
+        subject: file.name,
+        sharePositionOrigin: sharePositionOrigin,
       );
       return;
     }
@@ -137,8 +132,6 @@ class NativeFileService {
       final mimeType = MimeTypes.resolveMime(file.mimeType, file.name);
 
       if (kIsWeb) {
-        // On Web, check if browser supports Web Share with files
-        // Explicitly set downloadFallbackEnabled: false so it NEVER silently downloads the file!
         final bytes = await _fetchFileBytes(file);
         final sharedXFile = XFile.fromData(
           bytes,
@@ -146,55 +139,32 @@ class NativeFileService {
           name: file.name,
         );
 
-        try {
-          await SharePlus.instance.share(
-            ShareParams(
-              files: [sharedXFile],
-              subject: file.name,
-              title: file.name,
-              sharePositionOrigin: sharePositionOrigin,
-              downloadFallbackEnabled: false, // CRITICAL: NEVER download on share!
-            ),
-          );
-        } catch (_) {
-          // Browser cannot share raw files to local apps: offer Share Link instead of downloading
-          if (context.mounted) {
-            _showWebShareFallbackDialog(context, file);
-          }
-        }
+        await Share.shareXFiles(
+          [sharedXFile],
+          subject: file.name,
+          sharePositionOrigin: sharePositionOrigin,
+        );
         return;
       }
 
       // 2. Native Desktop / Mobile (Windows, macOS, Linux, Android, iOS)
       // Caches file under spaces_cache/<fileId>/<exactFileName>
       final localPath = await _fetchAndCacheFile(file);
-      final sharedXFile = XFile(
-        localPath,
-        mimeType: mimeType,
-        name: file.name,
-      );
+      final sharedXFile = XFile(localPath, mimeType: mimeType, name: file.name);
 
       // On Windows Desktop, this summons the native Windows 10/11 Share Sheet
       // (IDataTransferManagerInterop::ShowShareUIForWindow) with the authentic file.
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [sharedXFile],
-          subject: file.name,
-          title: file.name,
-          sharePositionOrigin: sharePositionOrigin,
-          downloadFallbackEnabled: false, // CRITICAL: NEVER download on share!
-        ),
+      await Share.shareXFiles(
+        [sharedXFile],
+        subject: file.name,
+        sharePositionOrigin: sharePositionOrigin,
       );
     } catch (e) {
       if (context.mounted) {
-        if (kIsWeb) {
-          _showWebShareFallbackDialog(context, file);
-        } else {
-          TopAlertBar.showError(
-            context,
-            'Unable to invoke native share sheet for "${file.name}". ${e.toString().replaceFirst('Exception: ', '')}',
-          );
-        }
+        TopAlertBar.showError(
+          context,
+          'Unable to invoke native share sheet for "${file.name}".',
+        );
       }
     }
   }
@@ -210,10 +180,7 @@ class NativeFileService {
     try {
       final response = await ApiClient.post(
         ApiEndpoints.shareLinks,
-        body: {
-          'fileId': file.id,
-          'allowDownload': true,
-        },
+        body: {'fileId': file.id, 'allowDownload': true},
       );
 
       if (!context.mounted) return;
@@ -266,10 +233,7 @@ class NativeFileService {
       }
     } catch (e) {
       if (context.mounted) {
-        TopAlertBar.showError(
-          context,
-          'Failed to download "${file.name}": $e',
-        );
+        TopAlertBar.showError(context, 'Failed to download "${file.name}": $e');
       }
     }
   }
@@ -290,10 +254,9 @@ class NativeFileService {
       }
 
       final streamedResponse = await client.send(request);
-      if (streamedResponse.statusCode < 200 || streamedResponse.statusCode >= 300) {
-        throw Exception(
-          'Backend returned HTTP ${streamedResponse.statusCode}',
-        );
+      if (streamedResponse.statusCode < 200 ||
+          streamedResponse.statusCode >= 300) {
+        throw Exception('Backend returned HTTP ${streamedResponse.statusCode}');
       }
 
       return await streamFileToCache(
@@ -319,20 +282,16 @@ class NativeFileService {
     return response.bodyBytes;
   }
 
-
   static String _buildFullShareUrl(String token) {
     const base = ApiEndpoints.baseUrl;
     final uri = Uri.parse(base);
-    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    final origin =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return '$origin/share/$token';
   }
 
   static void _showPreparingNotice(BuildContext context, String message) {
-    TopAlertBar.showInfo(
-      context,
-      message,
-      icon: Icons.sync_rounded,
-    );
+    TopAlertBar.showInfo(context, message, icon: Icons.sync_rounded);
   }
 
   static void _showNoAppFoundDialog(
@@ -350,7 +309,10 @@ class NativeFileService {
           children: const [
             Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 24),
             SizedBox(width: 10),
-            Text('No Compatible App', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text(
+              'No Compatible App',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
           ],
         ),
         content: Text(
@@ -375,45 +337,6 @@ class NativeFileService {
     );
   }
 
-  static void _showWebShareFallbackDialog(
-    BuildContext context,
-    FileModel file,
-  ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E24) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: const [
-            Icon(Icons.share_rounded, color: AppColors.primary, size: 24),
-            SizedBox(width: 10),
-            Text('Share Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-          ],
-        ),
-        content: Text(
-          'Direct app-to-app sharing (WhatsApp, Outlook, Telegram, etc.) is handled by the native Windows Desktop or Mobile App.\n\nIn web browsers, you can generate a secure share link to send this file.',
-          style: const TextStyle(fontSize: 14, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.link_rounded, size: 16),
-            label: const Text('Share Link'),
-            onPressed: () {
-              Navigator.pop(ctx);
-              shareSecureLink(context, file);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   static void _showShareLinkDialog(
     BuildContext context,
     FileModel file,
@@ -429,7 +352,10 @@ class NativeFileService {
           children: const [
             Icon(Icons.link_rounded, color: AppColors.primary, size: 24),
             SizedBox(width: 10),
-            Text('Share Link', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(
+              'Share Link',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
           ],
         ),
         content: Column(
@@ -446,11 +372,17 @@ class NativeFileService {
               decoration: BoxDecoration(
                 color: isDark ? Colors.black26 : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
               ),
               child: SelectableText(
                 shareUrl,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ],
@@ -470,11 +402,9 @@ class NativeFileService {
             label: const Text('Send Link'),
             onPressed: () {
               Navigator.pop(ctx);
-              SharePlus.instance.share(
-                ShareParams(
-                  text: 'Check out "${file.name}": $shareUrl',
-                  subject: file.name,
-                ),
+              Share.share(
+                'Check out "${file.name}": $shareUrl',
+                subject: file.name,
               );
             },
           ),
@@ -490,7 +420,10 @@ class NativeFileService {
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF1E1E24) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(file.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          file.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: SingleChildScrollView(
           child: SelectableText(
             file.content ?? 'Empty note',

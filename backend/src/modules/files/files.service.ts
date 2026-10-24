@@ -129,6 +129,37 @@ export class FilesService {
       }),
     ]);
 
+    // Auto-index: if file type is indexable, mark aiSearchEnabled: true, indexStatus: 'QUEUED', and enqueue indexing
+    if (aiService.isSupportedDocument(file.originalname)) {
+      await prisma.fileIndexStatus.upsert({
+        where: { fileId: fileRecord.id },
+        create: {
+          fileId: fileRecord.id,
+          spaceId,
+          status: 'pending',
+        },
+        update: {
+          status: 'pending',
+          error: null,
+        },
+      }).catch(() => {});
+
+      await prisma.file.update({
+        where: { id: fileRecord.id },
+        data: { aiSearchEnabled: true, indexStatus: 'QUEUED' },
+      }).catch(() => {});
+
+      await enqueueJob('DOCUMENT_INDEX', {
+        fileId: fileRecord.id,
+        fileName: sanitizedName,
+        fileExtension: extension,
+        storageKey: uniqueKey,
+        spaceId,
+        ownerId: userId,
+        isNote: false,
+      }).catch((err) => console.warn('Failed to enqueue indexing job:', err));
+    }
+
     this.notifySpaceMembers(spaceId, userId, 'FILE_UPLOADED', {
       fileId: fileRecord.id,
       spaceId,
@@ -141,6 +172,8 @@ export class FilesService {
       indexStatus: fileRecord.indexStatus,
       createdAt: fileRecord.createdAt.toISOString(),
     });
+
+    aiService.invalidateSpaceCache(spaceId);
 
     return {
       isDuplicate: false,
@@ -197,6 +230,38 @@ export class FilesService {
       },
     });
 
+    // Auto-index: if note, mark aiSearchEnabled: true, indexStatus: 'QUEUED', and enqueue indexing
+    if (category === 'NOTE') {
+      await prisma.fileIndexStatus.upsert({
+        where: { fileId: fileRecord.id },
+        create: {
+          fileId: fileRecord.id,
+          spaceId: input.spaceId,
+          status: 'pending',
+        },
+        update: {
+          status: 'pending',
+          error: null,
+        },
+      }).catch(() => {});
+
+      await prisma.file.update({
+        where: { id: fileRecord.id },
+        data: { aiSearchEnabled: true, indexStatus: 'QUEUED' },
+      }).catch(() => {});
+
+      await enqueueJob('DOCUMENT_INDEX', {
+        fileId: fileRecord.id,
+        fileName: sanitizedName,
+        fileExtension: `.${extension}`,
+        storageKey,
+        spaceId: input.spaceId,
+        ownerId: userId,
+        isNote: true,
+        noteContent: input.content,
+      }).catch((err) => console.warn('Failed to enqueue indexing job for note:', err));
+    }
+
     this.notifySpaceMembers(input.spaceId, userId, 'FILE_UPLOADED', {
       fileId: fileRecord.id,
       spaceId: input.spaceId,
@@ -209,6 +274,8 @@ export class FilesService {
       indexStatus: fileRecord.indexStatus,
       createdAt: fileRecord.createdAt.toISOString(),
     });
+
+    aiService.invalidateSpaceCache(input.spaceId);
 
     return {
       ...fileRecord,
@@ -234,8 +301,8 @@ export class FilesService {
 
     if (query.search) {
       where.OR = [
-        { name: { contains: query.search } },
-        { content: { contains: query.search } },
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { content: { contains: query.search, mode: 'insensitive' } },
       ];
     }
 
@@ -462,6 +529,9 @@ export class FilesService {
       fileName: file.name,
     });
 
+    aiService.invalidateSpaceCache(file.spaceId);
+    aiService.invalidateSpaceCache(input.targetSpaceId);
+
     return { message: 'File moved successfully' };
   }
 
@@ -536,6 +606,7 @@ export class FilesService {
         aiSearchEnabled: false,
         indexStatus: file.indexStatus,
       });
+      aiService.invalidateSpaceCache(file.spaceId);
       return { aiSearchEnabled: false, indexStatus: file.indexStatus };
     }
 
@@ -580,6 +651,7 @@ export class FilesService {
       aiSearchEnabled: true,
       indexStatus: 'QUEUED',
     });
+    aiService.invalidateSpaceCache(file.spaceId);
 
     return { aiSearchEnabled: true, indexStatus: 'QUEUED' };
   }
@@ -620,6 +692,7 @@ export class FilesService {
       fileName: file.name,
       isPermanent: false,
     });
+    aiService.invalidateSpaceCache(file.spaceId);
 
     return { message: 'File moved to Trash' };
   }
@@ -659,6 +732,7 @@ export class FilesService {
       spaceId: file.spaceId,
       fileName: file.name,
     });
+    aiService.invalidateSpaceCache(file.spaceId);
 
     return { message: 'File restored successfully' };
   }
@@ -712,6 +786,7 @@ export class FilesService {
       fileName: file.name,
       isPermanent: true,
     });
+    aiService.invalidateSpaceCache(file.spaceId);
 
     return { message: 'File permanently deleted' };
   }
