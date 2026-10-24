@@ -179,19 +179,7 @@ class ApiClient {
 
   static Future<bool> _tryRefreshToken() async {
     try {
-      String? refreshToken = await AuthStorage.getRefreshToken();
-      if (refreshToken == null || refreshToken.isEmpty) {
-        // Fallback to saved account's refresh token if active token was somehow lost
-        final saved = await AuthStorage.getSavedAccounts();
-        final acc = saved.firstWhere(
-          (a) => a['refreshToken'] != null && a['refreshToken'].toString().isNotEmpty,
-          orElse: () => {},
-        );
-        if (acc.isNotEmpty) {
-          refreshToken = acc['refreshToken'].toString();
-        }
-      }
-
+      final refreshToken = await AuthStorage.getRefreshToken();
       if (refreshToken == null || refreshToken.isEmpty) {
         return false;
       }

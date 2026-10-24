@@ -50,22 +50,22 @@ class AuthProvider extends ChangeNotifier {
     return utf8.decode(base64Url.decode(output));
   }
 
+  static const String webClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue:
+        '451372506623-e6mfiav2b8g66lupen41ji99bj1qgcht.apps.googleusercontent.com',
+  );
+  static const String desktopClientId = String.fromEnvironment(
+    'GOOGLE_DESKTOP_CLIENT_ID',
+    defaultValue:
+        '451372506623-dnj8atde0ckogudmqctc7pv2mv87bk58.apps.googleusercontent.com',
+  );
+  static const String webSecret = String.fromEnvironment('GOOGLE_WEB_CLIENT_SECRET');
+  static const String desktopSecret = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET');
+
   GoogleSignIn get googleSignIn => _googleSignIn;
 
   static GoogleSignInParams get _googleSignInParams {
-    const webClientId = String.fromEnvironment(
-      'GOOGLE_WEB_CLIENT_ID',
-      defaultValue:
-          '451372506623-e6mfiav2b8g66lupen41ji99bj1qgcht.apps.googleusercontent.com',
-    );
-    const desktopClientId = String.fromEnvironment(
-      'GOOGLE_DESKTOP_CLIENT_ID',
-      defaultValue:
-          '451372506623-dnj8atde0ckogudmqctc7pv2mv87bk58.apps.googleusercontent.com',
-    );
-    const webSecret = String.fromEnvironment('GOOGLE_WEB_CLIENT_SECRET');
-    const desktopSecret = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET');
-
     if (kIsWeb) {
       return GoogleSignInParams(
         clientId: webClientId,
@@ -76,7 +76,8 @@ class AuthProvider extends ChangeNotifier {
         defaultTargetPlatform == TargetPlatform.linux) {
       return GoogleSignInParams(
         clientId: desktopClientId,
-        clientSecret: desktopSecret.isNotEmpty ? desktopSecret : null,
+        // On desktop, google_sign_in_all_platforms asserts clientSecret != null
+        clientSecret: desktopSecret.isNotEmpty ? desktopSecret : 'not_configured',
         redirectPort: 3000,
       );
     } else {
@@ -116,25 +117,9 @@ class AuthProvider extends ChangeNotifier {
     final token = await AuthStorage.getAccessToken();
     final refreshToken = await AuthStorage.getRefreshToken();
 
-    // 1. If active tokens are not in memory, check for a saved account with a refresh token
+    // 1. If active tokens are not present, user is not logged in
     if ((token == null || token.isEmpty) &&
         (refreshToken == null || refreshToken.isEmpty)) {
-      final savedAccounts = await AuthStorage.getSavedAccounts();
-      final accountWithToken = savedAccounts.firstWhere(
-        (a) =>
-            a['refreshToken'] != null &&
-            a['refreshToken'].toString().isNotEmpty,
-        orElse: () => {},
-      );
-
-      if (accountWithToken.isNotEmpty) {
-        final success = await loginWithRefreshToken(
-          accountWithToken['refreshToken'].toString(),
-          email: accountWithToken['email'],
-        );
-        if (success) return;
-      }
-
       _user = null;
       _status = AuthStatus.unauthenticated;
       notifyListeners();
@@ -411,6 +396,18 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux) &&
+          desktopSecret.isEmpty) {
+        _isLoading = false;
+        _errorMessage =
+            'Google Sign-In on Desktop requires GOOGLE_DESKTOP_CLIENT_SECRET to be configured.';
+        notifyListeners();
+        return null;
+      }
+
       try {
         await _googleSignIn.signOut();
       } catch (_) {}
@@ -442,6 +439,18 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux) &&
+          desktopSecret.isEmpty) {
+        _isLoading = false;
+        _errorMessage =
+            'Google Sign-In on Desktop requires GOOGLE_DESKTOP_CLIENT_SECRET to be configured.';
+        notifyListeners();
+        return false;
+      }
+
       // Force the account selection dialog by signing out first
       try {
         await _googleSignIn.signOut();
