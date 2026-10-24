@@ -1,53 +1,49 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
-import 'providers/spaces_provider.dart';
-import 'providers/files_provider.dart';
-import 'providers/theme_provider.dart';
-import 'providers/sharing_provider.dart';
-import 'providers/activity_provider.dart';
-import 'providers/plans_provider.dart';
-import 'providers/ai_credits_provider.dart';
-import 'presentation/screens/splash/splash_screen.dart';
+import 'presentation/screens/auth/login_screen.dart';
+import 'presentation/screens/main_navigation_screen.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  final themeProvider = ThemeProvider();
-  await themeProvider.loadTheme();
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: themeProvider),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => SpacesProvider()),
-        ChangeNotifierProvider(create: (_) => FilesProvider()),
-        ChangeNotifierProvider(create: (_) => SharingProvider()),
-        ChangeNotifierProvider(create: (_) => ActivityProvider()),
-        ChangeNotifierProvider(create: (_) => PlansProvider()),
-        ChangeNotifierProvider(create: (_) => AiCreditsProvider()),
-      ],
-      child: const SpacesApp(),
-    ),
-  );
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+  }
 }
 
-class SpacesApp extends StatelessWidget {
-  const SpacesApp({super.key});
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = MyHttpOverrides();
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-
-    return MaterialApp(
-      title: 'Spaces — Store Once. Find Instantly.',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeProvider.themeMode,
-      home: const SplashScreen(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()..checkAuth()),
+      ],
+      child: Consumer<AuthProvider>(
+        builder: (context, auth, _) {
+          return MaterialApp(
+            title: 'My Space',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ThemeMode.system,
+            home: auth.isAuthenticated
+                ? const MainNavigationScreen()
+                : const LoginScreen(),
+          );
+        },
+      ),
     );
   }
 }
