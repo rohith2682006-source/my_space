@@ -432,7 +432,7 @@ export class AuthService {
       console.error(`[EMAIL ERROR] Background OTP delivery failed for ${user.email}:`, err);
     });
 
-    return { emailSent: true, otp };
+    return { emailSent: true };
   }
 
   /**
