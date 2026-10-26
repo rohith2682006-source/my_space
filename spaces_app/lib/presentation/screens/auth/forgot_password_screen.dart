@@ -20,7 +20,12 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  // Steps: 1 = Email, 2 = OTP, 3 = New Password, 4 = Success
+  // Steps:
+  // 1 = Enter Email & Find Account
+  // 2 = Account Confirmed -> Send OTP
+  // 3 = Enter OTP Received in Mail
+  // 4 = Create New Password
+  // 5 = Success
   int _currentStep = 1;
 
   final _emailController = TextEditingController();
@@ -37,12 +42,31 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
   String _verifiedOtp = '';
+  String _lastAutoSubmittedOtp = '';
+
+  Map<String, dynamic>? _verifiedAccount;
 
   @override
   void initState() {
     super.initState();
     if (widget.initialEmail != null && widget.initialEmail!.isNotEmpty) {
       _emailController.text = widget.initialEmail!;
+    }
+    _otpController.addListener(_onOtpChanged);
+  }
+
+  // Realtime verification: submit as soon as 4 digits are entered
+  void _onOtpChanged() {
+    final code = _otpController.text.trim();
+    if (code.length < 4) _lastAutoSubmittedOtp = '';
+    if (_currentStep == 3 &&
+        !_isLoading &&
+        code.length == 4 &&
+        RegExp(r'^\d{4}$').hasMatch(code) &&
+        code != _lastAutoSubmittedOtp) {
+      _lastAutoSubmittedOtp = code;
+      FocusScope.of(context).unfocus();
+      _handleVerifyOtp();
     }
   }
 
@@ -75,8 +99,37 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
   }
 
-  Future<void> _handleSendOtp() async {
+  // ── Step 1 Handler: Verify that the account exists ────────────────────────
+  Future<void> _handleVerifyAccount() async {
     if (!_formKeyEmail.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final email = _emailController.text.trim();
+    final account = await auth.verifyAccount(email);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (account != null) {
+      setState(() {
+        _verifiedAccount = account;
+        _currentStep = 2;
+        _errorMessage = null;
+      });
+    } else {
+      setState(() {
+        _errorMessage =
+            auth.errorMessage ?? 'No account found with this email address.';
+      });
+    }
+  }
+
+  // ── Step 2 Handler: Send OTP to verified account ─────────────────────────
+  Future<void> _handleSendOtp() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -93,9 +146,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _startCooldown();
       _otpController.clear();
       setState(() {
-        _currentStep = 2;
+        _currentStep = 3;
         _errorMessage = null;
       });
+
       TopAlertBar.showSuccess(
         context,
         'Verification code sent to $email. Please check your inbox.',
@@ -103,11 +157,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } else {
       setState(() {
         _errorMessage =
-            auth.errorMessage ?? 'Failed to send OTP. Please verify email.';
+            auth.errorMessage ?? 'Failed to send OTP. Please try again.';
       });
     }
   }
 
+  // ── Step 3 Handler: Verify 4-Digit Code ────────────────────────────────────
   Future<void> _handleVerifyOtp() async {
     if (!_formKeyOtp.currentState!.validate()) return;
 
@@ -116,7 +171,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final otp = _otpController.text.trim();
     _verifiedOtp = otp;
 
-    // Auto-clear the OTP text field immediately after clicking Continue / Verify
     _otpController.clear();
 
     setState(() {
@@ -131,7 +185,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     if (success) {
       setState(() {
-        _currentStep = 3;
+        _currentStep = 4;
         _errorMessage = null;
       });
     } else {
@@ -142,6 +196,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
   }
 
+  // ── Step 4 Handler: Reset Password ───────────────────────────────────────
   Future<void> _handleResetPassword() async {
     if (!_formKeyPassword.currentState!.validate()) return;
     final newPass = _newPasswordController.text;
@@ -172,7 +227,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     if (success) {
       setState(() {
-        _currentStep = 4;
+        _currentStep = 5;
         _errorMessage = null;
       });
     } else {
@@ -257,13 +312,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _buildStepContent(bool isDark) {
     switch (_currentStep) {
       case 1:
-        return _buildStep1Email(isDark);
+        return _buildStep1FindAccount(isDark);
       case 2:
-        return _buildStep2Otp(isDark);
+        return _buildStep2ConfirmAccount(isDark);
       case 3:
-        return _buildStep3NewPassword(isDark);
+        return _buildStep3Otp(isDark);
       case 4:
-        return _buildStep4Success(isDark);
+        return _buildStep4NewPassword(isDark);
+      case 5:
+        return _buildStep5Success(isDark);
       default:
         return const SizedBox.shrink();
     }
@@ -357,19 +414,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // ─── Step 1: Email ────────────────────────────────────────────────────────
-  Widget _buildStep1Email(bool isDark) {
+  // ─── Step 1: Find Account by Email ────────────────────────────────────────
+  Widget _buildStep1FindAccount(bool isDark) {
     return Form(
       key: _formKeyEmail,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(
-            icon: Icons.mark_email_read_outlined,
-            title: 'Forgot Password',
+            icon: Icons.manage_accounts_outlined,
+            title: 'Find Your Account',
             subtitle:
-                'Enter your registered email address. We will generate and send a realtime OTP verification code to your mail.',
-            stepText: 'Step 1 of 3',
+                'Enter your registered email address to verify which account you want to change the password for.',
+            stepText: 'Step 1 of 4',
           ),
           CustomTextField(
             controller: _emailController,
@@ -389,9 +446,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           SizedBox(
             width: double.infinity,
             child: CustomButton(
-              text: 'Send Verification Code',
+              text: 'Verify Account',
               isLoading: _isLoading,
-              onPressed: _isLoading ? null : _handleSendOtp,
+              onPressed: _isLoading ? null : _handleVerifyAccount,
             ),
           ),
           const SizedBox(height: 16),
@@ -414,8 +471,183 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // ─── Step 2: OTP ──────────────────────────────────────────────────────────
-  Widget _buildStep2Otp(bool isDark) {
+  // ─── Step 2: Confirm Account & Direct to Send OTP ─────────────────────────
+  Widget _buildStep2ConfirmAccount(bool isDark) {
+    final firstName = _verifiedAccount?['firstName'] ?? '';
+    final lastName = _verifiedAccount?['lastName'] ?? '';
+    final fullName = ('$firstName $lastName').trim();
+    final email = _verifiedAccount?['email'] ?? _emailController.text.trim();
+    final initialLetter =
+        fullName.isNotEmpty ? fullName[0].toUpperCase() : 'U';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(
+          icon: Icons.verified_user_rounded,
+          title: 'Account Verified',
+          subtitle:
+              'We found your registered Spaces account. Please confirm this is your account to receive your 4-digit code.',
+          stepText: 'Step 2 of 4',
+        ),
+
+        // Glowing Account Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: AppColors.primary.withOpacity(0.35),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: AppColors.primary.withOpacity(0.25),
+                child: Text(
+                  initialLetter,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            fullName.isNotEmpty ? fullName : 'Spaces User',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.verified,
+                          color: AppColors.primary,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      email,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'Registered Account',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 18),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.mail_outline_rounded,
+                color: Colors.white70,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'A 4-digit verification code will be sent to $email.',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 28),
+        SizedBox(
+          width: double.infinity,
+          child: CustomButton(
+            text: 'Send Verification Code',
+            isLoading: _isLoading,
+            onPressed: _isLoading ? null : _handleSendOtp,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: TextButton.icon(
+            onPressed: () => setState(() {
+              _currentStep = 1;
+              _errorMessage = null;
+            }),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              size: 16,
+              color: Colors.white70,
+            ),
+            label: const Text(
+              'Wrong Account? Change Email',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── Step 3: Enter OTP ───────────────────────────────────────────────────
+  Widget _buildStep3Otp(bool isDark) {
     return Form(
       key: _formKeyOtp,
       child: Column(
@@ -426,7 +658,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             title: 'Enter Verification OTP',
             subtitle:
                 'We sent a 4-digit verification code to ${_emailController.text}. Please check your email inbox.',
-            stepText: 'Step 2 of 3',
+            stepText: 'Step 3 of 4',
           ),
           CustomTextField(
             controller: _otpController,
@@ -490,8 +722,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // ─── Step 3: New Password & Re-enter Password ─────────────────────────────
-  Widget _buildStep3NewPassword(bool isDark) {
+  // ─── Step 4: New Password & Re-enter Password ────────────────────────────
+  Widget _buildStep4NewPassword(bool isDark) {
     return Form(
       key: _formKeyPassword,
       child: Column(
@@ -499,10 +731,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         children: [
           _buildHeader(
             icon: Icons.lock_reset_rounded,
-            title: 'Reset Password',
+            title: 'Create New Password',
             subtitle:
                 'Code verified! Enter your new password and re-enter it to confirm.',
-            stepText: 'Step 3 of 3',
+            stepText: 'Step 4 of 4',
           ),
           CustomTextField(
             controller: _newPasswordController,
@@ -548,8 +780,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  // ─── Step 4: Success ──────────────────────────────────────────────────────
-  Widget _buildStep4Success(bool isDark) {
+  // ─── Step 5: Success ─────────────────────────────────────────────────────
+  Widget _buildStep5Success(bool isDark) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,

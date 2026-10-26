@@ -74,7 +74,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
 
       if (response.success && mounted) {
-        TopAlertBar.showSuccess(context, 'OTP sent to ${auth.user!.email}');
+        TopAlertBar.showSuccess(context, 'OTP sent to ${auth.user!.email}. Please check your inbox.');
         setState(() => _step = 1);
       } else if (mounted) {
         TopAlertBar.showError(context, response.message ?? 'Failed to send OTP');

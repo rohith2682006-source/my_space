@@ -8,6 +8,7 @@ import {
   refreshTokenSchema,
   changePasswordSchema,
   googleLoginSchema,
+  verifyAccountSchema,
   forgotPasswordSchema,
   verifyOtpSchema,
   resetPasswordSchema,
@@ -21,6 +22,7 @@ router.post('/login', validate(loginSchema), authController.login);
 router.post('/google', validate(googleLoginSchema), authController.googleLogin);
 router.post('/refresh', validate(refreshTokenSchema), authController.refreshToken);
 router.post('/logout', authController.logout);
+router.post('/verify-account', validate(verifyAccountSchema), authController.verifyAccount);
 router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
 router.post('/verify-otp', validate(verifyOtpSchema), authController.verifyOtp);
 router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);

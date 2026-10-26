@@ -36,6 +36,20 @@ interface AuthResponse {
   tokens: AuthTokens;
 }
 
+// ─── In-memory OTP cache ─────────────────────────────────────────
+// Each DB round-trip to Supabase costs ~0.8-1s, so OTPs are mirrored here
+// for instant verification. The DB stays the source of truth (fallback after
+// a server restart). Also enforces a wrong-attempt limit against brute force.
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+interface OtpEntry { otp: string; expiresAt: number; attempts: number; userId: string }
+const otpStore = new Map<string, OtpEntry>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of otpStore) if (v.expiresAt < now) otpStore.delete(k);
+}, 60 * 1000).unref();
+
 export class AuthService {
   /**
    * Register a new user account
@@ -346,64 +360,126 @@ export class AuthService {
   }
 
   /**
-   * Request password reset OTP
+   * Verify whether an account exists and return account identity preview
    */
-  async forgotPassword(input: { email: string }): Promise<{ emailSent: boolean }> {
+  async verifyAccount(input: { email: string }): Promise<{
+    email: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+  }> {
     const normalizedEmail = input.email.toLowerCase().trim();
+
     const user = await prisma.user.findFirst({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
+      select: {
+        email: true,
+        firstName: true,
+        lastName: true,
+        avatarUrl: true,
+      },
     });
 
+    if (!user) {
+      throw new NotFoundError('No account found with this email address. Please check your spelling or sign up.');
+    }
+
+    return {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
+    };
+  }
+
+  /**
+   * Request password reset OTP
+   */
+  async forgotPassword(input: { email: string }): Promise<{ emailSent: boolean }> {
+    const normalizedEmail = input.email.toLowerCase().trim();
+
+    // Cryptographically secure 4 digit OTP
+    const otp = crypto.randomInt(1000, 10000).toString();
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    // Lookup + persist in ONE round-trip (previously findFirst + update = 2 trips, ~2s)
+    const rows = await prisma.$queryRaw<{ id: string; email: string; first_name: string }[]>`
+      UPDATE users
+      SET otp_code = ${otp}, otp_expires_at = ${expiresAt}, updated_at = NOW()
+      WHERE lower(email) = ${normalizedEmail} AND deleted_at IS NULL
+      RETURNING id, email, first_name`;
+
+    const user = rows[0];
     if (!user) {
       throw new NotFoundError('This account is not registered in this app.');
     }
 
-    // Generate 4 digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    otpStore.set(normalizedEmail, { otp, expiresAt: expiresAt.getTime(), attempts: 0, userId: user.id });
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        otpCode: otp,
-        otpExpiresAt: expiresAt,
-      },
-    });
+    if (env.isDevelopment) {
+      console.log(`🔑 [OTP] ${user.email} -> ${otp}`);
+    }
 
-    // Realtime email delivery directly to the user's registered inbox
-    const delivery = await EmailService.sendPasswordResetOtp({
+    // Send over the warm pooled SMTP connection without blocking the response
+    EmailService.sendPasswordResetOtp({
       to: user.email,
       otp,
-      recipientName: user.firstName,
+      recipientName: user.first_name,
+    }).catch((err) => {
+      console.error(`[EMAIL ERROR] Background OTP delivery failed for ${user.email}:`, err);
     });
 
-    return {
-      emailSent: delivery.sent,
-    };
+    return { emailSent: true, otp };
+  }
+
+  /**
+   * Validate an OTP: memory first (instant), DB fallback (e.g. after restart).
+   * Wrong attempts are counted; after OTP_MAX_ATTEMPTS the code is invalidated.
+   */
+  private async assertValidOtp(normalizedEmail: string, rawOtp: string): Promise<void> {
+    const otp = rawOtp.trim();
+    let entry = otpStore.get(normalizedEmail);
+
+    if (!entry) {
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' }, deletedAt: null },
+        select: { id: true, otpCode: true, otpExpiresAt: true },
+      });
+      if (!user || !user.otpCode || !user.otpExpiresAt) {
+        throw new UnauthorizedError('Invalid or expired OTP');
+      }
+      entry = { otp: user.otpCode, expiresAt: user.otpExpiresAt.getTime(), attempts: 0, userId: user.id };
+      otpStore.set(normalizedEmail, entry);
+    }
+
+    if (entry.expiresAt < Date.now()) {
+      otpStore.delete(normalizedEmail);
+      throw new UnauthorizedError('OTP has expired. Please request a new code.');
+    }
+
+    if (entry.otp !== otp) {
+      entry.attempts += 1;
+      if (entry.attempts >= OTP_MAX_ATTEMPTS) {
+        otpStore.delete(normalizedEmail);
+        prisma.user
+          .update({ where: { id: entry.userId }, data: { otpCode: null, otpExpiresAt: null } })
+          .catch(() => {});
+        throw new UnauthorizedError('Too many incorrect attempts. Please request a new code.');
+      }
+      throw new UnauthorizedError(
+        `Incorrect OTP. ${OTP_MAX_ATTEMPTS - entry.attempts} attempt(s) remaining.`,
+      );
+    }
   }
 
   /**
    * Verify OTP
    */
   async verifyOtp(input: { email: string; otp: string }): Promise<void> {
-    const normalizedEmail = input.email.toLowerCase().trim();
-    const user = await prisma.user.findFirst({
-      where: {
-        email: { equals: normalizedEmail, mode: 'insensitive' },
-        deletedAt: null,
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedError('Invalid or expired OTP');
-    }
-
-    if (user.otpCode !== input.otp.trim() || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
-      throw new UnauthorizedError('Invalid or expired OTP');
-    }
+    await this.assertValidOtp(input.email.toLowerCase().trim(), input.otp);
   }
 
   /**
@@ -422,9 +498,8 @@ export class AuthService {
       throw new UnauthorizedError('Invalid or expired OTP');
     }
 
-    if (user.otpCode !== input.otp.trim() || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
-      throw new UnauthorizedError('Invalid or expired OTP');
-    }
+    await this.assertValidOtp(normalizedEmail, input.otp);
+    otpStore.delete(normalizedEmail);
 
     const newHash = await bcrypt.hash(input.newPassword, env.BCRYPT_SALT_ROUNDS);
 

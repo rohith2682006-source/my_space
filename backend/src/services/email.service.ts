@@ -1,4 +1,10 @@
+import dns from 'dns';
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (_) {}
+
 import nodemailer, { type Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 
 interface SendOtpOptions {
   to: string;
@@ -8,9 +14,21 @@ interface SendOtpOptions {
 
 export class EmailService {
   private static transporter: Transporter | null = null;
+  private static resendClient: Resend | null = null;
 
   static init(): void {
+    this.getResendClient();
     this.getTransporter();
+  }
+
+  private static getResendClient(): Resend | null {
+    if (this.resendClient) return this.resendClient;
+    const key = process.env.RESEND_API_KEY;
+    if (key && key.trim().startsWith('re_')) {
+      this.resendClient = new Resend(key.trim());
+      console.log('[EMAIL] High-speed Resend API client initialized.');
+    }
+    return this.resendClient;
   }
 
   private static getTransporter(): Transporter | null {
@@ -21,28 +39,31 @@ export class EmailService {
     const user = (process.env.SMTP_USER || process.env.EMAIL_USER || 'rohithro.sg@gmail.com').trim();
     const rawPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'oarr ygnm tejc ssxz';
     const cleanPass = rawPass.replace(/\s+/g, '');
-    const isSsl = port === 465;
+    const isGmail = (process.env.SMTP_SERVICE || '').toLowerCase() === 'gmail' || host.includes('gmail');
 
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: isSsl,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-      rateDelta: 1000,
-      rateLimit: 10,
-      auth: { user, pass: cleanPass },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-    });
+    const poolOpts = { pool: true, maxConnections: 3, maxMessages: 100 } as const;
+
+    if (isGmail) {
+      this.transporter = nodemailer.createTransport({
+        service: 'gmail',
+        ...poolOpts,
+        auth: { user, pass: cleanPass },
+      });
+    } else {
+      this.transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        ...poolOpts,
+        auth: { user, pass: cleanPass },
+      });
+    }
 
     this.transporter.verify((err) => {
       if (err) {
-        console.warn('[EMAIL] Realtime SMTP connection pool warning:', err.message);
+        console.warn('[EMAIL] SMTP connection warning:', err.message);
       } else {
-        console.log('[EMAIL] 24x7 Realtime SMTP Connection Pool is ready and active.');
+        console.log('[EMAIL] SMTP fallback transporter is verified and ready.');
       }
     });
 
@@ -50,8 +71,7 @@ export class EmailService {
   }
 
   static async sendPasswordResetOtp({ to, otp, recipientName }: SendOtpOptions): Promise<{ sent: boolean; message: string }> {
-    const transporter = this.getTransporter();
-
+    const startTime = Date.now();
     const subject = `${otp} is your Spaces verification code`;
     const text = `Hi ${recipientName || 'there'},\n\nYour Spaces password reset OTP is: ${otp}\n\nThis code will expire in 10 minutes.\nIf you did not request this, please ignore this email.`;
     const html = `
@@ -71,25 +91,65 @@ export class EmailService {
       </div>
     `;
 
-    if (transporter) {
+    // ── 1. Priority: Resend Dedicated API (sub-second delivery) ────────
+    const resend = this.getResendClient();
+    if (resend) {
       try {
-        const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
-        const info: any = await transporter.sendMail({
-          from: `"Spaces Security" <${fromAddress}>`,
-          to,
+        const fromAddress = process.env.RESEND_FROM || 'Spaces Security <onboarding@resend.dev>';
+        const result = await resend.emails.send({
+          from: fromAddress,
+          to: [to],
           subject,
           text,
           html,
         });
 
-        console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}. MessageId: ${info?.messageId}`);
-        return { sent: true, message: `OTP sent to ${to}` };
+        if (result.error) {
+          console.warn(`[RESEND WARNING] Resend returned error (${result.error.message}). Falling back to SMTP...`);
+        } else {
+          const duration = Date.now() - startTime;
+          console.log(`⚡ [RESEND SENT] OTP to ${to} in ${duration}ms! ID: ${result.data?.id}`);
+          return { sent: true, message: `OTP sent via Resend to ${to}` };
+        }
       } catch (err: any) {
-        console.error(`[EMAIL ERROR] Failed to send email via SMTP:`, err.message);
-        return { sent: false, message: `Email sending failed (${err.message})` };
+        console.warn(`[RESEND ERROR] Resend dispatch failed: ${err.message}. Falling back to SMTP...`);
       }
-    } else {
-      return { sent: false, message: 'SMTP not configured' };
     }
+
+    // ── 2. Fallback: Persistent Pooled SMTP (Gmail) ────────────────────
+    const transporter = this.getTransporter();
+    if (transporter) {
+      const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
+      const mail = {
+        from: `"Spaces Security" <${fromAddress}>`,
+        to,
+        subject,
+        text,
+        html,
+        priority: 'high' as const,
+        headers: {
+          'X-Priority': '1 (Highest)',
+          'X-MSMail-Priority': 'High',
+          'Importance': 'high',
+        },
+      };
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const info: any = await transporter.sendMail(mail);
+          const duration = Date.now() - startTime;
+          console.log(`[EMAIL SENT] OTP to ${to} via SMTP in ${duration}ms (attempt ${attempt}). MessageId: ${info?.messageId}`);
+          return { sent: true, message: `OTP sent to ${to}` };
+        } catch (err: any) {
+          console.error(`[EMAIL ERROR] SMTP send attempt ${attempt} failed:`, err.message);
+          if (attempt === 2) {
+            return { sent: false, message: `Email sending failed (${err.message})` };
+          }
+        }
+      }
+      return { sent: false, message: 'Email sending failed' };
+    }
+
+    return { sent: false, message: 'No email service configured' };
   }
 }

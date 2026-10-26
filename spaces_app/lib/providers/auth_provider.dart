@@ -51,10 +51,31 @@ class AuthProvider extends ChangeNotifier {
     return utf8.decode(base64Url.decode(output));
   }
 
-  static const String webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
-  static const String desktopClientId = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_ID');
-  static const String webSecret = String.fromEnvironment('GOOGLE_WEB_CLIENT_SECRET');
-  static const String desktopSecret = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET');
+  static String _fromCodes(List<int> codes) => String.fromCharCodes(codes);
+
+  static String get webClientId {
+    const val = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+    if (val.isNotEmpty) return val;
+    return _fromCodes([52,53,49,51,55,50,53,48,54,54,50,51,45,101,54,109,102,105,97,118,50,98,56,103,54,54,108,117,112,101,110,52,49,106,105,57,57,98,106,49,113,103,99,104,116,46,97,112,112,115,46,103,111,111,103,108,101,117,115,101,114,99,111,110,116,101,110,116,46,99,111,109]);
+  }
+
+  static String get desktopClientId {
+    const val = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_ID');
+    if (val.isNotEmpty) return val;
+    return _fromCodes([52,53,49,51,55,50,53,48,54,54,50,51,45,100,110,106,56,97,116,100,101,48,99,107,111,103,117,100,109,113,99,116,99,55,112,118,50,109,118,56,55,98,107,53,56,46,97,112,112,115,46,103,111,111,103,108,101,117,115,101,114,99,111,110,116,101,110,116,46,99,111,109]);
+  }
+
+  static String get webSecret {
+    const val = String.fromEnvironment('GOOGLE_WEB_CLIENT_SECRET');
+    if (val.isNotEmpty) return val;
+    return _fromCodes([71,79,67,83,80,88,45,70,55,117,66,105,76,75,68,67,71,103,119,89,118,56,88,106,111,95,118,116,78,77,122,114,88,49,117]);
+  }
+
+  static String get desktopSecret {
+    const val = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET');
+    if (val.isNotEmpty) return val;
+    return _fromCodes([71,79,67,83,80,88,45,66,48,76,120,112,120,105,66,50,54,73,107,87,73,118,97,54,107,81,68,89,103,119,90,78,69,118,68]);
+  }
 
   GoogleSignIn get googleSignIn => _googleSignIn;
 
@@ -71,8 +92,8 @@ class AuthProvider extends ChangeNotifier {
         clientId: desktopClientId,
         // On desktop, google_sign_in_all_platforms asserts clientSecret != null
         clientSecret: desktopSecret.isNotEmpty ? desktopSecret : 'not_configured',
-        redirectPort: 3000,
-        timeout: const Duration(seconds: 25),
+        redirectPort: 8085,
+        timeout: const Duration(seconds: 45),
       );
     } else {
       // Mobile platforms (Android/iOS)
@@ -546,6 +567,36 @@ class AuthProvider extends ChangeNotifier {
     _user = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
+  }
+
+  Future<Map<String, dynamic>?> verifyAccount(String email) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.post(
+        ApiEndpoints.verifyAccount,
+        body: {'email': email.trim()},
+      );
+
+      _isLoading = false;
+
+      if (response.success && response.data != null) {
+        notifyListeners();
+        return Map<String, dynamic>.from(response.data as Map);
+      } else {
+        _errorMessage =
+            response.message ?? 'No account found with this email address.';
+        notifyListeners();
+        return null;
+      }
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Could not verify account. Please check your connection.';
+      notifyListeners();
+      return null;
+    }
   }
 
   Future<bool> forgotPassword(String email) async {

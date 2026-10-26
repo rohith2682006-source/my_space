@@ -16,7 +16,6 @@
     "reindex": "tsx src/scripts/reindex_to_gemini.ts",
     "lint": "eslint src/",
     "test": "vitest"
-
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -30,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
     "nodemailer": "^10.1.0",
+    "resend": "^6.34.1",
     "sharp": "^0.34.2",
     "uuid": "^11.1.0",
     "zod": "^3.25.67"

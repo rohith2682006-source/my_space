@@ -65,6 +65,13 @@ export const forgotPasswordSchema = z.object({
     .transform((v) => v.toLowerCase().trim()),
 });
 
+export const verifyAccountSchema = z.object({
+  email: z
+    .string()
+    .email('Please enter a valid email address')
+    .transform((v) => v.toLowerCase().trim()),
+});
+
 export const verifyOtpSchema = z.object({
   email: z
     .string()

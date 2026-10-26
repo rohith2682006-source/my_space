@@ -119,6 +119,19 @@ export class AuthController {
     }
   }
 
+  async verifyAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.verifyAccount(req.body);
+      res.status(200).json({
+        success: true,
+        message: 'Account verified successfully.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       await authService.forgotPassword(req.body);

@@ -142,6 +142,7 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
           _currentStep = 2;
           _isLoading = false;
         });
+
         TopAlertBar.showSuccess(
           context,
           'Verification code sent to $enteredEmail. Please check your inbox.',
