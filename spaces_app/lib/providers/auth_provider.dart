@@ -99,7 +99,7 @@ class AuthProvider extends ChangeNotifier {
       // Mobile platforms (Android/iOS)
       // On Android, GoogleSignIn uses this as serverClientId to obtain an idToken.
       // It MUST be the Web Application Client ID, not the Android Client ID.
-      return const GoogleSignInParams(
+      return GoogleSignInParams(
         clientId: webClientId,
       );
     }

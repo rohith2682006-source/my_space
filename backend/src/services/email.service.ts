@@ -36,7 +36,7 @@ export class EmailService {
 
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
     const port = parseInt(process.env.SMTP_PORT || '465', 10);
-    const user = (process.env.SMTP_USER || process.env.EMAIL_USER || 'rohithro.sg@gmail.com').trim();
+    const user = (process.env.SMTP_USER || process.env.EMAIL_USER || 'spacesro.official@gmail.com').trim();
     const rawPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'oarr ygnm tejc ssxz';
     const cleanPass = rawPass.replace(/\s+/g, '');
     const isGmail = (process.env.SMTP_SERVICE || '').toLowerCase() === 'gmail' || host.includes('gmail');
@@ -96,8 +96,10 @@ export class EmailService {
     if (resend) {
       try {
         const fromAddress = process.env.RESEND_FROM || 'Spaces Security <onboarding@resend.dev>';
+        const replyTo = process.env.EMAIL_REPLY_TO || process.env.SMTP_USER || 'spacesro.official@gmail.com';
         const result = await resend.emails.send({
           from: fromAddress,
+          replyTo: replyTo,
           to: [to],
           subject,
           text,
@@ -119,7 +121,7 @@ export class EmailService {
     // ── 2. Fallback: Persistent Pooled SMTP (Gmail) ────────────────────
     const transporter = this.getTransporter();
     if (transporter) {
-      const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
+      const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'spacesro.official@gmail.com';
       const mail = {
         from: `"Spaces Security" <${fromAddress}>`,
         to,

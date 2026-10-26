@@ -283,7 +283,7 @@ class NativeFileService {
   }
 
   static String _buildFullShareUrl(String token) {
-    const base = ApiEndpoints.baseUrl;
+    final base = ApiEndpoints.baseUrl;
     final uri = Uri.parse(base);
     final origin =
         '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
