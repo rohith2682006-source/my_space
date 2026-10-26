@@ -24,8 +24,11 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkSession() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    await auth.checkAuth();
+    // Run auth check in parallel with a snappy 350ms splash intro
+    await Future.wait([
+      auth.checkAuth(),
+      Future.delayed(const Duration(milliseconds: 350)),
+    ]);
 
     if (!mounted) return;
 

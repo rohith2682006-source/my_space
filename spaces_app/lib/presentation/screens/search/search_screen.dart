@@ -281,6 +281,8 @@ class _SearchScreenState extends State<SearchScreen> {
                               ),
                               title: Text(
                                 space.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                 ),

@@ -92,19 +92,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (success) {
       _startCooldown();
       _otpController.clear();
-      final code = auth.lastGeneratedOtp;
-      if (code != null && code.isNotEmpty) {
-        _otpController.text = code;
-      }
       setState(() {
         _currentStep = 2;
         _errorMessage = null;
       });
       TopAlertBar.showSuccess(
         context,
-        code != null
-            ? 'Verification code: $code (Sent to $email)'
-            : 'Verification code sent to $email',
+        'Verification code sent to $email. Please check your inbox.',
       );
     } else {
       setState(() {

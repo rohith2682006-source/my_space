@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:google_sign_in_all_platforms/google_sign_in_all_platforms.dart';
@@ -50,16 +51,8 @@ class AuthProvider extends ChangeNotifier {
     return utf8.decode(base64Url.decode(output));
   }
 
-  static const String webClientId = String.fromEnvironment(
-    'GOOGLE_WEB_CLIENT_ID',
-    defaultValue:
-        '451372506623-e6mfiav2b8g66lupen41ji99bj1qgcht.apps.googleusercontent.com',
-  );
-  static const String desktopClientId = String.fromEnvironment(
-    'GOOGLE_DESKTOP_CLIENT_ID',
-    defaultValue:
-        '451372506623-dnj8atde0ckogudmqctc7pv2mv87bk58.apps.googleusercontent.com',
-  );
+  static const String webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  static const String desktopClientId = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_ID');
   static const String webSecret = String.fromEnvironment('GOOGLE_WEB_CLIENT_SECRET');
   static const String desktopSecret = String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET');
 
@@ -79,6 +72,7 @@ class AuthProvider extends ChangeNotifier {
         // On desktop, google_sign_in_all_platforms asserts clientSecret != null
         clientSecret: desktopSecret.isNotEmpty ? desktopSecret : 'not_configured',
         redirectPort: 3000,
+        timeout: const Duration(seconds: 25),
       );
     } else {
       // Mobile platforms (Android/iOS)
@@ -91,6 +85,17 @@ class AuthProvider extends ChangeNotifier {
   }
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(params: _googleSignInParams);
+  Completer<void>? _googleSignInCancelCompleter;
+
+  void cancelGoogleSignIn() {
+    if (_googleSignInCancelCompleter != null &&
+        !_googleSignInCancelCompleter!.isCompleted) {
+      _googleSignInCancelCompleter!.complete();
+    }
+    _isLoading = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
 
   AuthStatus get status => _status;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
@@ -128,22 +133,22 @@ class AuthProvider extends ChangeNotifier {
 
     // 2. Immediately restore cached user to keep user logged in with zero delay
     final cachedUser = await AuthStorage.getUser();
-    if (cachedUser != null) {
-      _user = cachedUser;
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-    } else {
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-    }
+    _user = cachedUser;
+    _status = AuthStatus.authenticated;
+    notifyListeners();
 
-    // 3. Verify / refresh session in background
+    // 3. Verify / refresh session in background without blocking initial app launch
+    unawaited(_verifySessionInBackground(cachedUser));
+  }
+
+  Future<void> _verifySessionInBackground(UserModel? cachedUser) async {
     try {
       final response = await ApiClient.get(ApiEndpoints.me);
       if (response.success && response.data != null) {
         _user = UserModel.fromJson(response.data);
         await AuthStorage.saveUser(_user!);
         _status = AuthStatus.authenticated;
+        notifyListeners();
       } else if (response.statusCode == 401) {
         // Attempt seamless token refresh
         final refreshed = await ApiClient.refreshToken();
@@ -162,11 +167,13 @@ class AuthProvider extends ChangeNotifier {
         await AuthStorage.clearAll();
         _user = null;
         _status = AuthStatus.unauthenticated;
+        notifyListeners();
       } else {
         // Network offline / connection hiccup: keep cached user session active
         if (cachedUser != null) {
           _user = cachedUser;
           _status = AuthStatus.authenticated;
+          notifyListeners();
         }
       }
     } catch (_) {
@@ -174,9 +181,9 @@ class AuthProvider extends ChangeNotifier {
       if (cachedUser != null) {
         _user = cachedUser;
         _status = AuthStatus.authenticated;
+        notifyListeners();
       }
     }
-    notifyListeners();
   }
 
   Future<bool> login(String email, String password) async {
@@ -412,12 +419,16 @@ class AuthProvider extends ChangeNotifier {
         await _googleSignIn.signOut();
       } catch (_) {}
 
-      final credentials = await _googleSignIn.signIn();
+      _googleSignInCancelCompleter = Completer<void>();
+
+      final credentials = await Future.any<dynamic>([
+        _googleSignIn.signIn(),
+        _googleSignInCancelCompleter!.future.then((_) => null),
+      ]) as GoogleSignInCredentials?;
 
       if (credentials == null || credentials.idToken == null) {
         _isLoading = false;
-        _errorMessage =
-            'Google sign-in was cancelled or no ID token was returned.';
+        _errorMessage = null;
         notifyListeners();
         return null;
       }
@@ -458,12 +469,16 @@ class AuthProvider extends ChangeNotifier {
         // Ignore errors if already signed out
       }
 
-      final credentials = await _googleSignIn.signIn();
+      _googleSignInCancelCompleter = Completer<void>();
+
+      final credentials = await Future.any<dynamic>([
+        _googleSignIn.signIn(),
+        _googleSignInCancelCompleter!.future.then((_) => null),
+      ]) as GoogleSignInCredentials?;
 
       if (credentials == null || credentials.idToken == null) {
         _isLoading = false;
-        _errorMessage =
-            'Google sign-in was cancelled or no ID token was returned.';
+        _errorMessage = null;
         notifyListeners();
         return false;
       }
@@ -533,13 +548,9 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? _lastGeneratedOtp;
-  String? get lastGeneratedOtp => _lastGeneratedOtp;
-
   Future<bool> forgotPassword(String email) async {
     _isLoading = true;
     _errorMessage = null;
-    _lastGeneratedOtp = null;
     notifyListeners();
 
     final response = await ApiClient.post(
@@ -550,12 +561,6 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = false;
 
     if (response.success) {
-      if (response.data != null &&
-          response.data is Map &&
-          response.data['otp'] != null) {
-        _lastGeneratedOtp = response.data['otp'].toString();
-        debugPrint('[AUTH OTP] Dispatched verification code: $_lastGeneratedOtp');
-      }
       notifyListeners();
       return true;
     } else {

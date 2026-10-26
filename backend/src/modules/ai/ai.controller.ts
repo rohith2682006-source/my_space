@@ -8,6 +8,104 @@ import { AiCreditsService, CREDIT_COSTS } from './ai.credits.service';
 import { AiUsageService } from './ai.usage.service';
 import { prisma } from '../../config/database';
 
+async function streamDirectGemini(
+  options: {
+    systemPrompt?: string;
+    message: string;
+    history?: Array<{ role: string; content?: string; message?: string }>;
+    citations?: any[];
+  },
+  res: Response
+): Promise<boolean> {
+  const geminiApiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
+  if (!geminiApiKey) return false;
+
+  const candidateModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ];
+  const contents: any[] = [];
+
+  if (options.history && Array.isArray(options.history)) {
+    for (const h of options.history) {
+      const text = h.content || (h as any).message || '';
+      if (!text) continue;
+      const role = h.role === 'assistant' || h.role === 'model' ? 'model' : 'user';
+      contents.push({
+        role,
+        parts: [{ text }],
+      });
+    }
+  }
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: options.message }],
+  });
+
+  const requestBody: any = { contents };
+  if (options.systemPrompt) {
+    requestBody.systemInstruction = {
+      parts: [{ text: options.systemPrompt }],
+    };
+  }
+
+  for (const model of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${geminiApiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!response.ok || !response.body) {
+        console.warn(`[DIRECT GEMINI] Model ${model} returned ${response.status}. Trying next candidate...`);
+        continue;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const jsonStr = trimmed.slice(5).trim();
+            if (!jsonStr) continue;
+            try {
+              const data = JSON.parse(jsonStr);
+              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                res.write(`data: ${JSON.stringify({ text })}\n\n`);
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true, citations: options.citations || [] })}\n\n`);
+      res.end();
+      return true;
+    } catch (err: any) {
+      console.warn(`[DIRECT GEMINI] Error with ${model}:`, err.message);
+    }
+  }
+
+  return false;
+}
+
 export class AiController {
   async vision(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     const userId = req.user!.userId;
@@ -483,35 +581,65 @@ export class AiController {
         fileIds,
       );
 
-      // 3. Call Python AI service /rag/answer/stream
-      const aiResponse = await fetch(`${env.AI_SERVICE_URL}/rag/answer/stream`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AI_SERVICE_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: standaloneQuery || input.message,
-          history: input.history,
-          folder_manifest: folderManifest,
-          sources: candidates,
-        }),
-      });
+      // 3. Call Python AI service /rag/answer/stream with resilient direct Gemini fallback
+      let streamedOk = false;
+      try {
+        const aiResponse = await fetch(`${env.AI_SERVICE_URL}/rag/answer/stream`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.AI_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: standaloneQuery || input.message,
+            history: input.history,
+            folder_manifest: folderManifest,
+            sources: candidates,
+          }),
+          signal: AbortSignal.timeout(5_000),
+        });
 
-      if (!aiResponse.ok || !aiResponse.body) {
-        throw new Error(`AI service stream failed: ${aiResponse.status}`);
+        if (aiResponse.ok && aiResponse.body) {
+          const reader = aiResponse.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            res.write(text);
+          }
+          res.end();
+          streamedOk = true;
+          return;
+        }
+      } catch (upstreamErr: any) {
+        console.warn(`[AI RAG STREAM] Python AI service unreachable or error (${upstreamErr.message}). Activating direct Gemini fallback stream...`);
       }
 
-      const reader = aiResponse.body.getReader();
-      const decoder = new TextDecoder();
+      if (!streamedOk) {
+        const excerpts = (candidates || [])
+          .map((c: any, i: number) => `[Source ${i + 1}] (${c.fileName || 'Doc'}): ${c.content || c.excerpt || ''}`)
+          .join('\n\n');
+        const questionWithContext = excerpts
+          ? `File excerpts:\n${excerpts}\n\nUser Question: ${standaloneQuery || input.message}`
+          : (standaloneQuery || input.message);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        res.write(text);
+        const directSuccess = await streamDirectGemini(
+          {
+            message: questionWithContext,
+            history: input.history,
+            citations: candidates,
+            systemPrompt: 'You are Spaces AI. Answer questions based on the provided file excerpts. Cite sources using [Source 1], [Source 2], etc. If not in the excerpts, answer helpfully while noting context limitations.',
+          },
+          res
+        );
+
+        if (directSuccess) {
+          return;
+        }
+        throw new Error('AI stream temporarily unavailable');
       }
-      res.end();
     } catch (err: any) {
       if (creditsDeducted) {
         await AiCreditsService.refundCredits(userId, CREDIT_COSTS.DEEP_SEARCH, 'DEEP_SEARCH', err.message || 'Stream error').catch(() => {});
@@ -532,40 +660,154 @@ export class AiController {
     res.flushHeaders?.();
 
     try {
-      if (!env.AI_SERVICE_TOKEN) {
-        res.write(`data: ${JSON.stringify({ error: 'AI service is not configured', done: true })}\n\n`);
-        res.end();
-        return;
-      }
-
-      await AiCreditsService.deductCredits(userId, CREDIT_COSTS.QUICK_SEARCH, 'CHAT', {
+      AiCreditsService.deductCredits(userId, CREDIT_COSTS.QUICK_SEARCH, 'CHAT', {
         endpoint: '/chat/stream',
-      });
+      }).catch((e) => console.warn('[CREDITS] Non-blocking deduct error:', e));
       creditsDeducted = true;
 
-      const aiResponse = await fetch(`${env.AI_SERVICE_URL}/chat/stream`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AI_SERVICE_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(req.body),
-      });
+      // Check if folder or files are attached for RAG context
+      const spaceIds: string[] = Array.isArray(req.body.spaceIds) ? req.body.spaceIds : [];
+      const fileIds: string[] = Array.isArray(req.body.fileIds)
+        ? req.body.fileIds
+        : (req.body.fileId ? [req.body.fileId] : []);
 
-      if (!aiResponse.ok || !aiResponse.body) {
-        throw new Error(`AI service stream failed: ${aiResponse.status}`);
+      let attachedContext = '';
+      let citationsList: any[] = [];
+
+      if (spaceIds.length > 0 || fileIds.length > 0) {
+        try {
+          const [spaces, files] = await Promise.all([
+            spaceIds.length > 0
+              ? prisma.space.findMany({
+                  where: { id: { in: spaceIds }, ownerId: userId },
+                  select: { id: true, name: true, description: true },
+                })
+              : Promise.resolve([]),
+            prisma.file.findMany({
+              where: {
+                deletedAt: null,
+                uploadedBy: userId,
+                OR: [
+                  ...(spaceIds.length > 0 ? [{ spaceId: { in: spaceIds } }] : []),
+                  ...(fileIds.length > 0 ? [{ id: { in: fileIds } }] : []),
+                ],
+              },
+              select: {
+                id: true,
+                name: true,
+                mimeType: true,
+                size: true,
+                spaceId: true,
+                fileChunks: {
+                  take: 8,
+                  select: { content: true, chunkIndex: true },
+                  orderBy: { chunkIndex: 'asc' },
+                },
+              },
+              take: 20,
+            }),
+          ]);
+
+          if (spaces.length > 0 || files.length > 0) {
+            attachedContext += `[Attached Knowledge Base / Workspace Files]\n`;
+            if (spaces.length > 0) {
+              attachedContext += `Selected Folder(s): ${spaces.map((s) => `"${s.name}"`).join(', ')}\n`;
+            }
+            if (files.length > 0) {
+              attachedContext += `Files inside (${files.length} files total):\n`;
+              citationsList = files.map((f, idx) => ({
+                id: f.id,
+                name: f.name,
+                fileName: f.name,
+                spaceId: f.spaceId,
+                citationNumber: idx + 1,
+                fileType: f.mimeType || 'unknown',
+              }));
+
+              for (const f of files) {
+                attachedContext += `• ${f.name} (type: ${f.mimeType || 'unknown'}, size: ${f.size} bytes)\n`;
+                if (f.fileChunks && f.fileChunks.length > 0) {
+                  const excerpt = f.fileChunks.map((c: any) => c.content).join(' ').slice(0, 1000);
+                  if (excerpt.trim()) {
+                    attachedContext += `  Content Summary / Excerpt: ${excerpt}...\n`;
+                  }
+                }
+              }
+            }
+            attachedContext += `\nInstructions: The user is asking about the above folder and files. Answer their questions accurately based on the files and contents listed above. Cite file names when referencing them.`;
+          }
+        } catch (dbErr) {
+          console.warn('[AI CHAT] Failed to load attached folder context:', dbErr);
+        }
       }
 
-      const reader = aiResponse.body.getReader();
-      const decoder = new TextDecoder();
+      // If attached context is present, stream directly with real-time prediction speed
+      if (attachedContext) {
+        const directSuccess = await streamDirectGemini(
+          {
+            message: `${attachedContext}\n\nUser Question: ${req.body.message}`,
+            history: req.body.history,
+            citations: citationsList,
+            systemPrompt: 'You are Spaces AI, an intelligent, helpful assistant. You have full access to the attached folder and files provided in the context. Answer questions about this folder and its files warmly, accurately, and thoroughly.',
+          },
+          res
+        );
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        res.write(text);
+        if (directSuccess) {
+          return;
+        }
       }
-      res.end();
+
+      let streamedOk = false;
+      try {
+        const aiResponse = await fetch(`${env.AI_SERVICE_URL}/chat/stream`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.AI_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+          signal: AbortSignal.timeout(3_000),
+        });
+
+        if (aiResponse.ok && aiResponse.body) {
+          const reader = aiResponse.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            res.write(text);
+          }
+          res.end();
+          streamedOk = true;
+          return;
+        }
+      } catch (upstreamErr: any) {
+        console.warn(`[AI STREAM] Python AI service unreachable or error (${upstreamErr.message}). Activating direct Gemini fallback stream...`);
+      }
+
+      if (!streamedOk) {
+        const directSuccess = await streamDirectGemini(
+          {
+            message: attachedContext
+              ? `${attachedContext}\n\nUser Question: ${req.body.message}`
+              : req.body.message,
+            history: req.body.history,
+            citations: citationsList,
+            systemPrompt: attachedContext
+              ? 'You are Spaces AI. Answer questions about the user\'s attached folder and files accurately and thoroughly.'
+              : 'You are Spaces AI, an intelligent, empathetic, and thoughtful conversational assistant. Provide natural, thorough, and clear answers.',
+          },
+          res
+        );
+
+        if (directSuccess) {
+          return;
+        }
+        throw new Error('AI stream temporarily unavailable');
+      }
     } catch (err: any) {
       if (creditsDeducted) {
         await AiCreditsService.refundCredits(userId, CREDIT_COSTS.QUICK_SEARCH, 'CHAT', err.message || 'Stream error').catch(() => {});

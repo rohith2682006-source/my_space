@@ -121,11 +121,10 @@ export class AuthController {
 
   async forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await authService.forgotPassword(req.body);
+      await authService.forgotPassword(req.body);
       res.status(200).json({
         success: true,
         message: 'A 4-digit verification code has been sent to your registered email address.',
-        data: result,
       });
     } catch (error) {
       next(error);

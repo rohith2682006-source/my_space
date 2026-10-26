@@ -348,7 +348,7 @@ export class AuthService {
   /**
    * Request password reset OTP
    */
-  async forgotPassword(input: { email: string }): Promise<{ otp?: string }> {
+  async forgotPassword(input: { email: string }): Promise<{ emailSent: boolean }> {
     const normalizedEmail = input.email.toLowerCase().trim();
     const user = await prisma.user.findFirst({
       where: {
@@ -373,17 +373,15 @@ export class AuthService {
       },
     });
 
-    // Dispatch email asynchronously so client never hangs on cloud SMTP firewall issues
-    EmailService.sendPasswordResetOtp({
+    // Realtime email delivery directly to the user's registered inbox
+    const delivery = await EmailService.sendPasswordResetOtp({
       to: user.email,
       otp,
       recipientName: user.firstName,
-    }).catch(err => {
-      console.error('[EMAIL BACKGROUND ERROR]', err.message);
     });
 
     return {
-      otp,
+      emailSent: delivery.sent,
     };
   }
 

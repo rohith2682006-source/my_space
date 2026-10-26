@@ -37,7 +37,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     FavoritesScreen(),
     TrashScreen(),
     StorageScreen(),
-    AiChatScreen(),
+    AiChatScreen(embedded: true),
   ];
 
   final List<Map<String, dynamic>> _navItems = [

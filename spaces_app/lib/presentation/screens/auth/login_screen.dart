@@ -14,6 +14,7 @@ import '../main_navigation_screen.dart';
 import '../../../data/services/auth_storage.dart';
 import 'dart:async';
 import 'forgot_password_screen.dart';
+import '../../../core/services/app_update_service.dart';
 
 class _GoogleLogoPainter extends CustomPainter {
   @override
@@ -229,10 +230,11 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   bool _isLogin = true;
   bool _isSubmitting = false;
   bool _isGoogleSubmitting = false;
+  Timer? _resumeCancelTimer;
 
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -251,6 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSavedAccounts();
 
     _emailFocusNode.addListener(_onEmailFocusOrTextChanged);
@@ -258,7 +261,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<AuthProvider>().clearError();
+      if (mounted) AppUpdateService.checkForUpdates(context);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_isGoogleSubmitting) {
+        // When user switches back to the app from the browser:
+        // If login succeeded, OAuth redirect responds in ~1-2 seconds.
+        // If user cancelled/closed the browser page, cancel quickly (within 2.5s)
+        // so the user is never left waiting indefinitely.
+        _resumeCancelTimer?.cancel();
+        _resumeCancelTimer = Timer(const Duration(milliseconds: 2500), () {
+          if (mounted && _isGoogleSubmitting) {
+            _cancelGoogleAction();
+          }
+        });
+      }
+    } else if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _resumeCancelTimer?.cancel();
+    }
+  }
+
+  void _cancelGoogleAction() {
+    _resumeCancelTimer?.cancel();
+    if (mounted) {
+      setState(() => _isGoogleSubmitting = false);
+    }
+    context.read<AuthProvider>().cancelGoogleSignIn();
   }
 
   void _onEmailFocusOrTextChanged() {
@@ -609,6 +641,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _resumeCancelTimer?.cancel();
     _hideOverlay();
     _emailFocusNode.removeListener(_onEmailFocusOrTextChanged);
     _emailController.removeListener(_onEmailFocusOrTextChanged);
@@ -625,21 +659,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isGoogleSubmitting = true);
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
-    bool didTimeout = false;
-    Timer? timeoutTimer = Timer(const Duration(minutes: 1), () {
-      if (mounted && _isGoogleSubmitting) {
-        setState(() {
-          _isGoogleSubmitting = false;
-          didTimeout = true;
-        });
-      }
-    });
-
     if (!_isLogin) {
       // Signup flow
       final credentials = await auth.getGoogleSignInCredentials();
-      timeoutTimer.cancel();
-      if (didTimeout) return;
+      _resumeCancelTimer?.cancel();
+      if (!mounted || !_isGoogleSubmitting) return;
 
       if (credentials != null && credentials.idToken != null) {
         final payload = auth.parseJwt(credentials.idToken!);
@@ -673,8 +697,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       // Login flow
       final success = await auth.googleLogin();
-      timeoutTimer.cancel();
-      if (didTimeout) return;
+      _resumeCancelTimer?.cancel();
+      if (!mounted || !_isGoogleSubmitting) return;
 
       if (mounted) setState(() => _isGoogleSubmitting = false);
 
@@ -684,7 +708,10 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
           (route) => false,
         );
-      } else if (!success && mounted && auth.errorMessage != null) {
+      } else if (!success &&
+          mounted &&
+          auth.errorMessage != null &&
+          !auth.errorMessage!.toLowerCase().contains('cancel')) {
         _showErrorPopup(auth.errorMessage!);
       }
     }
@@ -1273,13 +1300,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                           onTap: _isSubmitting
                                               ? null
                                               : (_isGoogleSubmitting
-                                                  ? () => setState(() => _isGoogleSubmitting = false)
+                                                  ? _cancelGoogleAction
                                                   : _handleGoogleAction),
                                           child: Center(
                                             child: Row(
                                               mainAxisAlignment: MainAxisAlignment.center,
                                               children: [
-                                                if (_isGoogleSubmitting)
+                                                if (_isGoogleSubmitting) ...[
                                                   const SizedBox(
                                                     width: 18,
                                                     height: 18,
@@ -1287,20 +1314,55 @@ class _LoginScreenState extends State<LoginScreen> {
                                                       strokeWidth: 2,
                                                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                                     ),
-                                                  )
-                                                else
-                                                  _buildGoogleLogo(),
-                                                const SizedBox(width: 12),
-                                                Text(
-                                                  _isGoogleSubmitting
-                                                      ? 'Connecting...'
-                                                      : (_isLogin ? 'Sign in with Google' : 'Sign up with Google'),
-                                                  style: GoogleFonts.outfit(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 15,
                                                   ),
-                                                ),
+                                                  const SizedBox(width: 12),
+                                                  Text(
+                                                    'Connecting...',
+                                                    style: GoogleFonts.outfit(
+                                                      color: Colors.white,
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.12),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.close_rounded,
+                                                          size: 14,
+                                                          color: Colors.redAccent.shade100,
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          'Cancel',
+                                                          style: GoogleFonts.outfit(
+                                                            color: Colors.redAccent.shade100,
+                                                            fontWeight: FontWeight.w600,
+                                                            fontSize: 12,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ] else ...[
+                                                  _buildGoogleLogo(),
+                                                  const SizedBox(width: 12),
+                                                  Text(
+                                                    _isLogin ? 'Sign in with Google' : 'Sign up with Google',
+                                                    style: GoogleFonts.outfit(
+                                                      color: Colors.white,
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                           ),

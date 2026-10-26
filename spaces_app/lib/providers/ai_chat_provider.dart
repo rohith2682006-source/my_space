@@ -236,7 +236,7 @@ class AiChatProvider extends ChangeNotifier {
   String? _attachedSpaceName;
   int _attachedSpaceFileCount = 0;
   final List<AttachedFileInfo> _attachedFiles = [];
-
+  static final http.Client _sharedHttpClient = http.Client();
   http.Client? _activeStreamClient;
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -644,6 +644,30 @@ class AiChatProvider extends ChangeNotifier {
       // Check if streaming is supported for this mode
       final bool useStreaming = imageBytes == null; // Vision uses non-stream endpoint
 
+      // Sub-second general chat route: directly stream from nearest Google edge without multi-hop cloud delay
+      final bool isGeneralChat = spaceIds.isEmpty &&
+          fileIds.isEmpty &&
+          imageBytes == null &&
+          session.mode == 'chat';
+
+      if (isGeneralChat) {
+        final directSuccess = await _fallbackDirectGeminiChat(
+          session: session,
+          assistantMsg: assistantMsg,
+          prompt: trimmed,
+        );
+
+        if (directSuccess && assistantMsg.text.trim().isNotEmpty) {
+          assistantMsg.isStreaming = false;
+          _errorMessage = null;
+          _isSending = false;
+          session.updatedAt = DateTime.now();
+          await _saveToStorage();
+          notifyListeners();
+          return true;
+        }
+      }
+
       if (useStreaming) {
         final headers = await ApiClient.getHeaders();
         final request = http.Request(
@@ -656,7 +680,9 @@ class AiChatProvider extends ChangeNotifier {
         request.body = jsonEncode(requestBody);
 
         _activeStreamClient = http.Client();
-        var streamedResponse = await _activeStreamClient!.send(request);
+        var streamedResponse = await _activeStreamClient!
+            .send(request)
+            .timeout(const Duration(seconds: 7));
 
         if (streamedResponse.statusCode == 401) {
           final refreshed = await ApiClient.refreshToken();
@@ -665,22 +691,48 @@ class AiChatProvider extends ChangeNotifier {
             final retryRequest = http.Request('POST', request.url);
             retryRequest.headers.addAll(newHeaders);
             retryRequest.body = request.body;
-            streamedResponse = await _activeStreamClient!.send(retryRequest);
+            streamedResponse = await _activeStreamClient!
+                .send(retryRequest)
+                .timeout(const Duration(seconds: 7));
           }
         }
 
         if (streamedResponse.statusCode != 200) {
-          final errorBody = await streamedResponse.stream.bytesToString();
-          String userMsg = 'Streaming error (${streamedResponse.statusCode})';
-          try {
-            final errObj = jsonDecode(errorBody);
-            if (errObj is Map && errObj['error'] is Map && errObj['error']['message'] != null) {
-              userMsg = errObj['error']['message'];
-            } else if (errObj is Map && errObj['message'] != null) {
-              userMsg = errObj['message'];
+          debugPrint('[AI STREAM] Stream returned status ${streamedResponse.statusCode}. Falling back to standard AI API...');
+          notifyListeners();
+
+          final fallbackResponse = await ApiClient.post(
+            session.mode == 'chat'
+                ? ApiEndpoints.aiChat
+                : ApiEndpoints.aiDeepSearch,
+            body: requestBody,
+          );
+
+          if (fallbackResponse.success && fallbackResponse.data != null) {
+            final respData = fallbackResponse.data;
+            if (respData is Map) {
+              assistantMsg.text = (respData['reply'] ?? respData['text'] ?? respData['answer'] ?? respData['message'] ?? '').toString();
+              if (respData['sources'] is List) {
+                assistantMsg.sources = (respData['sources'] as List)
+                    .whereType<Map>()
+                    .map((s) => ChatSource.fromJson(Map<String, dynamic>.from(s)))
+                    .toList();
+              } else if (respData['citations'] is List) {
+                assistantMsg.sources = (respData['citations'] as List)
+                    .whereType<Map>()
+                    .map((s) => ChatSource.fromJson(Map<String, dynamic>.from(s)))
+                    .toList();
+              }
+            } else {
+              assistantMsg.text = respData.toString();
             }
-          } catch (_) {}
-          throw Exception(userMsg);
+            assistantMsg.statusMessage = null;
+            assistantMsg.isStreaming = false;
+            _isSending = false;
+            _errorMessage = null;
+            notifyListeners();
+            return true;
+          }
         }
 
         final lineStream = streamedResponse.stream
@@ -720,11 +772,6 @@ class AiChatProvider extends ChangeNotifier {
                     Map<String, dynamic>.from(data['search_metadata'] as Map);
                 assistantMsg.statusMessage = null; // Clear live status on completion
                 notifyListeners();
-              }
-              if (data['error'] != null) {
-                if (assistantMsg.text.isEmpty) {
-                  _errorMessage = data['error'] as String;
-                }
               }
             }
           } catch (_) {
@@ -769,15 +816,52 @@ class AiChatProvider extends ChangeNotifier {
         }
       }
 
-      // If empty reply after streaming
+      // If empty reply after streaming or error occurred, trigger resilient fallback API and Direct Gemini
       if (assistantMsg.text.trim().isEmpty) {
-        if (_errorMessage != null && _errorMessage!.isNotEmpty) {
-          session.messages.remove(assistantMsg);
+        debugPrint('[AI CHAT] Primary stream returned empty. Attempting standard AI API fallback...');
+        try {
+          final fallbackResponse = await ApiClient.post(
+            session.mode == 'chat'
+                ? ApiEndpoints.aiChat
+                : ApiEndpoints.aiDeepSearch,
+            body: requestBody,
+          );
+          if (fallbackResponse.success && fallbackResponse.data != null) {
+            final respData = fallbackResponse.data;
+            if (respData is Map) {
+              assistantMsg.text = (respData['reply'] ?? respData['text'] ?? respData['answer'] ?? respData['message'] ?? '').toString();
+              if (respData['sources'] is List) {
+                assistantMsg.sources = (respData['sources'] as List)
+                    .whereType<Map>()
+                    .map((s) => ChatSource.fromJson(Map<String, dynamic>.from(s)))
+                    .toList();
+              }
+            } else {
+              assistantMsg.text = respData.toString();
+            }
+          }
+        } catch (_) {}
+
+        if (assistantMsg.text.trim().isEmpty) {
+          debugPrint('[AI CHAT] Fallback API empty. Triggering resilient Direct Gemini fallback...');
+          await _fallbackDirectGeminiChat(
+            session: session,
+            assistantMsg: assistantMsg,
+            prompt: text,
+          );
+        }
+
+        if (assistantMsg.text.trim().isNotEmpty) {
+          _errorMessage = null;
         } else if (_attachedFiles.isEmpty && _attachedSpaceId == null && _selectedSpaceId == null) {
           assistantMsg.text = "I'm here to chat or answer questions. How can I help you today?";
+          _errorMessage = null;
         } else {
           assistantMsg.text = "I couldn't find that in your files. Try rephrasing or make sure the relevant file is uploaded to this space.";
+          _errorMessage = null;
         }
+      } else {
+        _errorMessage = null;
       }
 
       assistantMsg.isStreaming = false;
@@ -789,8 +873,25 @@ class AiChatProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('AI Chat Error: $e');
-      // If error occurs, check if assistantMsg was partially streamed
+      // If error occurs and message is empty, try direct fallback before giving up
       if (assistantMsg.text.isEmpty) {
+        try {
+          final recovered = await _fallbackDirectGeminiChat(
+            session: session,
+            assistantMsg: assistantMsg,
+            prompt: text,
+          );
+          if (recovered && assistantMsg.text.trim().isNotEmpty) {
+            _errorMessage = null;
+            assistantMsg.isStreaming = false;
+            session.updatedAt = DateTime.now();
+            _isSending = false;
+            _activeStreamClient = null;
+            await _saveToStorage();
+            notifyListeners();
+            return true;
+          }
+        } catch (_) {}
         session.messages.remove(assistantMsg);
         _errorMessage = 'Network error: $e';
       } else {
@@ -801,5 +902,100 @@ class AiChatProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> _fallbackDirectGeminiChat({
+    required ChatSession session,
+    required ChatMessage assistantMsg,
+    required String prompt,
+  }) async {
+    const geminiKey = String.fromEnvironment('GEMINI_API_KEY');
+    final models = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+    ];
+
+    final contents = <Map<String, dynamic>>[];
+    final recent = session.messages
+        .where((m) => m != assistantMsg && m.text.trim().isNotEmpty)
+        .toList();
+    final windowed = recent.length > 6 ? recent.sublist(recent.length - 6) : recent;
+
+    for (final m in windowed) {
+      contents.add({
+        'role': m.isUser ? 'user' : 'model',
+        'parts': [{'text': m.text}],
+      });
+    }
+    contents.add({
+      'role': 'user',
+      'parts': [{'text': prompt}],
+    });
+
+    String systemText = 'You are Spaces AI, an intelligent, empathetic, and thoughtful conversational assistant for the Spaces platform. Answer helpfully, warmly, and clearly.';
+    if (attachedSpaceName != null) {
+      systemText += '\n[Attached Knowledge Context]\nThe user is currently interacting with the folder "$attachedSpaceName" ($attachedSpaceFileCount files inside).';
+    }
+    if (attachedFiles.isNotEmpty) {
+      systemText += '\nAttached Files: ${attachedFiles.map((f) => f.name).join(', ')}.';
+    }
+    if (attachedSpaceName != null || attachedFiles.isNotEmpty) {
+      systemText += '\nIf the user asks questions about their folder or files, address them directly and informatively using this context.';
+    }
+
+    final payload = {
+      'contents': contents,
+      'systemInstruction': {
+        'parts': [
+          {'text': systemText}
+        ]
+      }
+    };
+
+    for (final model in models) {
+      try {
+        final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$geminiKey',
+        );
+        final request = http.Request('POST', url)
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode(payload);
+        final streamed = await _sharedHttpClient.send(request).timeout(const Duration(seconds: 5));
+
+        if (streamed.statusCode == 200) {
+          assistantMsg.statusMessage = null;
+          final lines = streamed.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter());
+
+          await for (final line in lines) {
+            final trimmed = line.trim();
+            if (trimmed.startsWith('data:')) {
+              final jsonStr = trimmed.substring(5).trim();
+              if (jsonStr.isEmpty) continue;
+              try {
+                final d = jsonDecode(jsonStr);
+                final text = d['candidates']?[0]?['content']?['parts']?[0]?['text'];
+                if (text is String && text.isNotEmpty) {
+                  assistantMsg.text += text;
+                  notifyListeners();
+                }
+              } catch (_) {}
+            }
+          }
+
+          if (assistantMsg.text.trim().isNotEmpty) {
+            assistantMsg.isStreaming = false;
+            return true;
+          }
+        }
+      } catch (e) {
+        debugPrint('[DIRECT GEMINI FALLBACK] Failed model $model: $e');
+      }
+    }
+    return false;
   }
 }

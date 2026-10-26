@@ -26,14 +26,14 @@ RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() in ("true", "1", "ye
 # Use the latest alias for the chat model as required
 LLM_MODEL = os.environ.get(
     "LLM_MODEL",
-    "gemini-flash-latest",
+    "gemini-3.5-flash",
 )
 
 LLM_FALLBACK_MODELS = [
     model.strip()
     for model in os.environ.get(
         "LLM_FALLBACK_MODELS",
-        "gemini-2.5-flash,gemini-3.5-flash,gemini-3.1-flash-lite",
+        "gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-flash-latest",
     ).split(",")
     if model.strip()
 ]

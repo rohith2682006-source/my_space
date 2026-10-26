@@ -21,6 +21,7 @@ const envSchema = z.object({
 
   AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:8000'),
   AI_SERVICE_TOKEN: z.string().default(''),
+  GEMINI_API_KEY: z.string().optional().default(''),
   RAG_ENABLED: z.string().optional().transform((v) => v !== 'false' && v !== '0').default('true'),
 
   MAX_FILE_SIZE_MB: z.coerce.number().default(500),

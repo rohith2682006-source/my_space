@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api/api_client.dart';
 import '../core/api/api_endpoints.dart';
 import '../data/models/space_model.dart';
@@ -10,6 +12,22 @@ class SpacesProvider extends ChangeNotifier {
   String? _errorMessage;
 
   final Set<String> _unlockedSpaceIds = {};
+
+  SpacesProvider() {
+    _loadCachedSpaces();
+  }
+
+  Future<void> _loadCachedSpaces() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_spaces_list');
+      if (cachedJson != null && cachedJson.isNotEmpty && _spaces.isEmpty) {
+        final List<dynamic> list = jsonDecode(cachedJson);
+        _spaces = list.map((item) => SpaceModel.fromJson(item)).toList();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
 
   List<SpaceModel> get spaces => _spaces;
   SpaceModel? get activeSpace => _activeSpace;
@@ -29,9 +47,11 @@ class SpacesProvider extends ChangeNotifier {
   }
 
   Future<void> fetchSpaces({String? search}) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+    if (_spaces.isEmpty) {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     String url = ApiEndpoints.spaces;
     if (search != null && search.isNotEmpty) {
@@ -48,6 +68,10 @@ class SpacesProvider extends ChangeNotifier {
                 ? response.data['data']
                 : []);
       _spaces = list.map((item) => SpaceModel.fromJson(item)).toList();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cached_spaces_list', jsonEncode(list));
+      } catch (_) {}
     } else {
       _errorMessage = response.message ?? 'Failed to load Spaces';
     }

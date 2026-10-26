@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { startJobWorker, stopJobWorker } from './workers/job.worker';
+import { EmailService } from './services/email.service';
 
 async function bootstrap() {
   // Connect to Database
@@ -9,6 +10,9 @@ async function bootstrap() {
 
   // Start background job worker
   startJobWorker();
+
+  // Pre-warm 24x7 Realtime Email SMTP Pool
+  EmailService.init();
 
   const app = createApp();
 

@@ -81,10 +81,13 @@ class FileListItem extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 4,
                           children: [
                             Text(
-                              FileHelper.formatBytes(file.size),
+                              '${FileHelper.formatBytes(file.size)} • ${FileHelper.timeAgo(file.createdAt)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark
@@ -92,28 +95,9 @@ class FileListItem extends StatelessWidget {
                                     : AppColors.lightTextTertiary,
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '•',
-                              style: TextStyle(
-                                color: isDark
-                                    ? AppColors.darkTextTertiary
-                                    : AppColors.lightTextTertiary,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              FileHelper.timeAgo(file.createdAt),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark
-                                    ? AppColors.darkTextTertiary
-                                    : AppColors.lightTextTertiary,
-                              ),
-                            ),
-                            if (showSpaceBadge && file.space != null) ...[
-                              const SizedBox(width: 8),
+                            if (showSpaceBadge && file.space != null)
                               Container(
+                                constraints: const BoxConstraints(maxWidth: 100),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 6,
                                   vertical: 2,
@@ -125,6 +109,8 @@ class FileListItem extends StatelessWidget {
                                 ),
                                 child: Text(
                                   file.space!.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
@@ -132,11 +118,8 @@ class FileListItem extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            ],
-                            if (_isIndexable(file)) ...[
-                              const SizedBox(width: 10),
+                            if (_isIndexable(file))
                               _buildIndexStatus(file),
-                            ],
                           ],
                         ),
                       ],
@@ -144,6 +127,9 @@ class FileListItem extends StatelessWidget {
                   ),
                   // Star Button
                   IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     icon: Icon(
                       file.isStarred
                           ? Icons.star_rounded
@@ -160,6 +146,8 @@ class FileListItem extends StatelessWidget {
                   // More Menu
                   if (onActionSelected != null)
                     PopupMenuButton<String>(
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       icon: Icon(
                         Icons.more_vert_rounded,
                         color: isDark

@@ -9,42 +9,44 @@ interface SendOtpOptions {
 export class EmailService {
   private static transporter: Transporter | null = null;
 
+  static init(): void {
+    this.getTransporter();
+  }
+
   private static getTransporter(): Transporter | null {
     if (this.transporter) return this.transporter;
 
-    const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER || process.env.EMAIL_USER || 'rohithro.sg@gmail.com';
-    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'oarr ygnm tejc ssxz';
-    const service = process.env.SMTP_SERVICE || 'gmail'; // e.g. 'gmail'
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const port = parseInt(process.env.SMTP_PORT || '465', 10);
+    const user = (process.env.SMTP_USER || process.env.EMAIL_USER || 'rohithro.sg@gmail.com').trim();
+    const rawPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'oarr ygnm tejc ssxz';
+    const cleanPass = rawPass.replace(/\s+/g, '');
+    const isSsl = port === 465;
 
-    if (service && user && pass) {
-      const cleanPass = pass.replace(/\s+/g, '');
-      this.transporter = nodemailer.createTransport({
-        service,
-        auth: { user: user.trim(), pass: cleanPass },
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000,
-      });
-      return this.transporter;
-    }
+    this.transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: isSsl,
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 10,
+      auth: { user, pass: cleanPass },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
+    });
 
-    if (host && user && pass) {
-      const cleanPass = pass.replace(/\s+/g, '');
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user: user.trim(), pass: cleanPass },
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000,
-      });
-      return this.transporter;
-    }
+    this.transporter.verify((err) => {
+      if (err) {
+        console.warn('[EMAIL] Realtime SMTP connection pool warning:', err.message);
+      } else {
+        console.log('[EMAIL] 24x7 Realtime SMTP Connection Pool is ready and active.');
+      }
+    });
 
-    return null;
+    return this.transporter;
   }
 
   static async sendPasswordResetOtp({ to, otp, recipientName }: SendOtpOptions): Promise<{ sent: boolean; message: string }> {
@@ -72,7 +74,7 @@ export class EmailService {
     if (transporter) {
       try {
         const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || 'rohithro.sg@gmail.com';
-        const sendPromise = transporter.sendMail({
+        const info: any = await transporter.sendMail({
           from: `"Spaces Security" <${fromAddress}>`,
           to,
           subject,
@@ -80,23 +82,14 @@ export class EmailService {
           html,
         });
 
-        const timeoutPromise = new Promise<{ messageId?: string }>((_, reject) =>
-          setTimeout(() => reject(new Error('SMTP connection timed out')), 5000)
-        );
-
-        const info: any = await Promise.race([sendPromise, timeoutPromise]);
         console.log(`[EMAIL SENT] Password reset OTP sent successfully to ${to}. MessageId: ${info?.messageId}`);
         return { sent: true, message: `OTP sent to ${to}` };
       } catch (err: any) {
         console.error(`[EMAIL ERROR] Failed to send email via SMTP:`, err.message);
-        // Fallback to console
-        console.log(`\n=========================================\n[FALLBACK OTP] OTP for ${to} is: ${otp}\n=========================================\n`);
-        return { sent: false, message: `Email sending failed (${err.message}). Code: ${otp}` };
+        return { sent: false, message: `Email sending failed (${err.message})` };
       }
     } else {
-      // Realtime logging & dev delivery
-      console.log(`\n=========================================\n[REALTIME OTP GENERATED]\nTo: ${to}\nOTP Code: ${otp}\nExpires: 10 minutes\n(Add SMTP_USER and SMTP_PASS in backend/.env for live inbox delivery)\n=========================================\n`);
-      return { sent: true, message: `OTP generated for ${to}` };
+      return { sent: false, message: 'SMTP not configured' };
     }
   }
 }

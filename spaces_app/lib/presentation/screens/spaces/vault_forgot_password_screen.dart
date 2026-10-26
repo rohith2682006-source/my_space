@@ -137,22 +137,14 @@ class _VaultForgotPasswordScreenState extends State<VaultForgotPasswordScreen>
 
       if (response.success) {
         _startResendTimer();
-        String? otpCode;
-        if (response.data != null &&
-            response.data is Map &&
-            response.data['otp'] != null) {
-          otpCode = response.data['otp'].toString();
-          _otpController.text = otpCode;
-        }
+        _otpController.clear();
         setState(() {
           _currentStep = 2;
           _isLoading = false;
         });
         TopAlertBar.showSuccess(
           context,
-          otpCode != null
-              ? 'Verification code: $otpCode (Sent to $enteredEmail)'
-              : 'Verification code sent to $enteredEmail',
+          'Verification code sent to $enteredEmail. Please check your inbox.',
         );
       } else {
         setState(() {

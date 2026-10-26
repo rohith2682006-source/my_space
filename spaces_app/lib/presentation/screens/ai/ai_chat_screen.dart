@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -20,10 +21,78 @@ import '../../../core/api/api_endpoints.dart';
 import '../../../data/models/space_model.dart';
 import '../../widgets/folder_unlock_dialog.dart';
 
+class ThreeDotsLoadingIndicator extends StatefulWidget {
+  final Color color;
+  final double dotSize;
+
+  const ThreeDotsLoadingIndicator({
+    super.key,
+    this.color = AppColors.accent,
+    this.dotSize = 7.0,
+  });
+
+  @override
+  State<ThreeDotsLoadingIndicator> createState() => _ThreeDotsLoadingIndicatorState();
+}
+
+class _ThreeDotsLoadingIndicatorState extends State<ThreeDotsLoadingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final t = (_controller.value - (index * 0.2)) % 1.0;
+            final bounce = math.sin(t * math.pi);
+            final scale = 0.65 + (0.35 * bounce.clamp(0.0, 1.0));
+            final opacity = 0.35 + (0.65 * bounce.clamp(0.0, 1.0));
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2.5),
+              width: widget.dotSize * scale,
+              height: widget.dotSize * scale,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: opacity),
+                shape: BoxShape.circle,
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
 class AiChatScreen extends StatefulWidget {
   final String? initialQuery;
   final String? initialMode;
-  const AiChatScreen({super.key, this.initialQuery, this.initialMode});
+  final bool embedded;
+  const AiChatScreen({
+    super.key,
+    this.initialQuery,
+    this.initialMode,
+    this.embedded = false,
+  });
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -1293,52 +1362,20 @@ class _AiChatScreenState extends State<AiChatScreen> {
       });
     }
 
-    final canPop = Navigator.of(context).canPop();
+    final tabCtrl = NavigationTabController.of(context);
+    final isEmbedded = widget.embedded || tabCtrl != null;
+    final canPop = !isEmbedded && Navigator.of(context).canPop();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: canPop
-          ? AppBar(
-              backgroundColor: isDark ? const Color(0xFF130B2A) : const Color(0xFFF6F4EE),
-              elevation: 0,
-              leading: const UnifiedBackButton(),
-              title: Text(
-                'AI Assistant',
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              centerTitle: false,
-              actions: [
-                _buildCreditsBadge(balance, isDark),
-                IconButton(
-                  tooltip: 'Chat History',
-                  icon: const Icon(Icons.history_rounded, size: 21),
-                  onPressed: () => _showChatHistorySheet(context),
-                ),
-                IconButton(
-                  tooltip: 'New Chat',
-                  icon: const Icon(Icons.add_comment_outlined, size: 19),
-                  onPressed: isSending
-                      ? null
-                      : () {
-                          aiChatProvider.startNewChat();
-                          _messageController.clear();
-                        },
-                ),
-                const SizedBox(width: 8),
-              ],
-            )
-          : null,
+      appBar: null,
       body: SafeArea(
         top: false,
         bottom: true,
         child: Column(
           children: [
             // Scope Selector Bar & Action Controls (Folder / Private Chat + History & New Chat)
-            _buildScopeBar(aiChatProvider, isDark, foreground, secondary, balance, isSending),
+            _buildScopeBar(aiChatProvider, isDark, foreground, secondary, balance, isSending, canPop),
             // Messages List & Welcome Area (Centered in unified 840px column)
 
             Expanded(
@@ -1355,18 +1392,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       : RepaintBoundary(
                           child: ListView.builder(
                             controller: _scrollController,
+                            clipBehavior: Clip.hardEdge,
                             physics: const AlwaysScrollableScrollPhysics(
                               parent: ClampingScrollPhysics(),
                             ),
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                            itemCount: messages.length + (isSending ? 1 : 0),
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                            itemCount: messages.length,
                             itemBuilder: (context, index) {
                               return Center(
                                 child: ConstrainedBox(
                                   constraints: const BoxConstraints(maxWidth: 840),
-                                  child: index == messages.length
-                                      ? _buildThinking(secondary)
-                                      : _buildMessage(messages[index], isDark),
+                                  child: _buildMessage(messages[index], isDark),
                                 ),
                               );
                             },
@@ -1462,9 +1498,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     ],
                   ),
                   child: Icon(
-                    Icons.auto_awesome_rounded,
+                    Icons.chat_bubble_rounded,
                     color: Colors.white,
-                    size: isMobile ? 26 : 30,
+                    size: isMobile ? 24 : 28,
                   ),
                 ),
                 SizedBox(height: isMobile ? 18 : 24),
@@ -1488,6 +1524,37 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     height: 1.5,
                   ),
                 ),
+                const SizedBox(height: 22),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: _suggestions.map((suggestion) {
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+                    return InkWell(
+                      onTap: () => _handleSendMessage(suggestion),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Text(
+                          suggestion,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: secondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
@@ -1496,229 +1563,117 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-  Widget _buildThinking(Color secondary) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.accent, AppColors.primary],
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 14,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color:
-                  (Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black)
-                      .withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.accent,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Thinking...',
-                  style: TextStyle(color: secondary, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMessage(ChatMessage message, bool isDark) {
     final textColor = message.isUser
         ? Colors.white
         : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
 
+    if (message.isUser) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(18),
+                    bottomLeft: Radius.circular(18),
+                    bottomRight: Radius.circular(4),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (message.imageBytes != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            maxHeight: 220,
+                            maxWidth: 280,
+                          ),
+                          child: Image.memory(
+                            message.imageBytes!,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      message.text,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.5,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Assistant message: Clean, cardless, boxless natural text flow (no Gemini logo)
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: message.isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!message.isUser) ...[
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.accent, AppColors.primary],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.auto_awesome_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              decoration: BoxDecoration(
-                color: message.isUser
-                    ? AppColors.primary
-                    : (isDark ? Colors.black : Colors.white).withValues(
-                        alpha: isDark ? 0.25 : 0.70,
-                      ),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: message.isUser
-                      ? const Radius.circular(16)
-                      : const Radius.circular(4),
-                  bottomRight: message.isUser
-                      ? const Radius.circular(4)
-                      : const Radius.circular(16),
-                ),
-                border: message.isUser
-                    ? null
-                    : Border.all(
-                        color: Colors.white.withValues(
-                          alpha: isDark ? 0.16 : 0.25,
-                        ),
-                        width: 1,
-                      ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.text.isEmpty && message.isStreaming) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: ThreeDotsLoadingIndicator(
+                      color: isDark ? AppColors.accent : AppColors.primary,
+                      dotSize: 7.5,
+                    ),
                   ),
                 ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (message.imageBytes != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxHeight: 220,
-                          maxWidth: 280,
-                        ),
-                        child: Image.memory(
-                          message.imageBytes!,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                if (message.text.isNotEmpty)
+                  Text(
+                    message.text,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 14.5,
+                      height: 1.55,
+                      letterSpacing: 0.1,
                     ),
-                    const SizedBox(height: 8),
-                  ],
-                  // Live status banner when AI is streaming steps (e.g. Ingesting, Analyzing, Answering)
-                  if (message.isStreaming &&
-                      message.statusMessage != null &&
-                      message.statusMessage!.isNotEmpty) ...[
-                    _buildStreamingStatusBadge(message.statusMessage!, isDark),
-                    const SizedBox(height: 8),
-                  ],
-                  if (message.text.isNotEmpty)
-                    Text(
-                      message.text,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                  // Search & Ingestion metadata badge (e.g. Folder Overview • 3 files • 180ms)
-                  if (message.searchMetadata != null) ...[
-                    const SizedBox(height: 8),
-                    _buildSearchMetadataBadge(message.searchMetadata!, isDark),
-                  ],
-                  if (message.sources.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: message.sources.map((source) {
-                        return _buildSourceChip(source, isDark);
-                      }).toList(),
-                    ),
-                  ],
-                  if (!message.isUser && !message.isStreaming && message.text.isNotEmpty)
-                    _buildFeedbackRow(message, isDark),
+                  ),
+                if (message.searchMetadata != null) ...[
+                  const SizedBox(height: 6),
+                  _buildSearchMetadataBadge(message.searchMetadata!, isDark),
                 ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStreamingStatusBadge(String status, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: isDark ? 0.15 : 0.10),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.accent.withValues(alpha: 0.35),
-          width: 0.8,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: AppColors.accent,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              status,
-              style: const TextStyle(
-                color: AppColors.accent,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.2,
-              ),
+                if (message.sources.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: message.sources.map((source) {
+                      return _buildSourceChip(source, isDark);
+                    }).toList(),
+                  ),
+                ],
+                if (!message.isStreaming && message.text.isNotEmpty)
+                  _buildFeedbackRow(message, isDark),
+              ],
             ),
           ),
         ],
@@ -1951,34 +1906,51 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildCreditsBadge(int balance, bool isDark) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isNarrow = screenWidth < 520;
+    String formatBalance(int b) {
+      if (b >= 1000000) return '${(b / 1000000).toStringAsFixed(1)}M';
+      if (b >= 1000) return '${(b / 1000).toStringAsFixed(b >= 10000 ? 0 : 1)}k';
+      return '$b';
+    }
 
-    return ActionChip(
-      avatar: const Icon(
-        Icons.bolt_rounded,
-        color: AppColors.accent,
-        size: 13,
-      ),
-      label: Text(
-        isNarrow ? '$balance' : '$balance cr',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: isNarrow ? 11 : 12,
-          color: AppColors.accent,
-        ),
-      ),
-      padding: EdgeInsets.symmetric(horizontal: isNarrow ? 2 : 6),
-      visualDensity: VisualDensity.compact,
-      backgroundColor: AppColors.accent.withValues(alpha: 0.12),
-      onPressed: () {
+    return InkWell(
+      onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => const AiUsageScreen(),
-          ),
+          MaterialPageRoute(builder: (_) => const AiUsageScreen()),
         );
       },
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: isDark ? 0.16 : 0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: isDark ? 0.35 : 0.22),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.bolt_rounded,
+              color: AppColors.accent,
+              size: 13,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              formatBalance(balance),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                color: AppColors.accent,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1988,8 +1960,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
     Color foreground,
     Color secondary,
     int balance,
-    bool isSending,
-  ) {
+    bool isSending, [
+    bool canPop = false,
+  ]) {
     final hasFolder = aiChat.attachedSpaceId != null || aiChat.selectedSpaceId != null;
     final folderName = aiChat.attachedSpaceName ?? aiChat.selectedSpaceName;
     final fileCount = aiChat.attachedSpaceFileCount;
@@ -1999,11 +1972,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
-        horizontal: isNarrow ? 12 : 16,
+        horizontal: isNarrow ? 10 : 16,
         vertical: 4,
       ),
       decoration: BoxDecoration(
-        color: (isDark ? const Color(0xFF130B2A) : const Color(0xFFF6F4EE)).withValues(alpha: 0.95),
+        color: (isDark ? const Color(0xFF130B2A) : const Color(0xFFF8F7F4)).withValues(alpha: 0.95),
         border: Border(
           bottom: BorderSide(
             color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
@@ -2015,6 +1988,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
           constraints: const BoxConstraints(maxWidth: 860),
           child: Row(
             children: [
+              if (canPop) ...[
+                const Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: UnifiedBackButton(),
+                ),
+              ],
               // Left: Privacy & Folder Scope Chips
               Expanded(
                 child: SingleChildScrollView(
@@ -2024,12 +2003,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (!hasFolder && !hasFiles) ...[
-                        // Privacy-first Default: No folder or files selected
+                        // Private mode badge
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                           decoration: BoxDecoration(
                             color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
                             ),
@@ -2037,10 +2016,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.lock_outline_rounded, size: 12, color: secondary),
+                              Icon(Icons.lock_outline_rounded, size: 11, color: secondary),
                               const SizedBox(width: 4),
                               Text(
-                                isNarrow ? 'Private' : 'Private Chat (No files accessible)',
+                                isNarrow ? 'Private' : 'Private (No folder)',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
@@ -2050,96 +2029,135 @@ class _AiChatScreenState extends State<AiChatScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: _showFolderAccessDialog,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent.withValues(alpha: isDark ? 0.15 : 0.08),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: AppColors.accent.withValues(alpha: 0.35),
-                                ),
+                        const SizedBox(width: 6),
+                        // Add Folder button
+                        InkWell(
+                          onTap: _showFolderAccessDialog,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: isDark ? 0.16 : 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: isDark ? 0.35 : 0.25),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.add_rounded, size: 13, color: AppColors.accent),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    isNarrow ? '+ Folder' : 'Grant Folder Access',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.accent,
-                                    ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add_rounded, size: 13, color: AppColors.primary),
+                                SizedBox(width: 3),
+                                Text(
+                                  '+ Folder',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ] else ...[
                         if (hasFolder) ...[
-                          Chip(
-                            avatar: const Icon(Icons.folder_rounded, size: 13, color: AppColors.accent),
-                            label: Text(
-                              'Folder: $folderName${fileCount > 0 ? ' ($fileCount)' : ''}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.accent,
+                          // Sleek unified folder pill with inline Change & close
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? AppColors.primary.withValues(alpha: 0.18)
+                                  : const Color(0xFFF3E8FF),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: isDark ? 0.38 : 0.28),
                               ),
                             ),
-                            onDeleted: () {
-                              final currentSpaceName = aiChat.attachedSpaceName ?? 'Folder';
-                              _deselectAttachedSpace();
-                              TopAlertBar.showInfo(context, 'Deselected "$currentSpaceName". Folder locked.');
-                            },
-                            deleteButtonTooltipMessage: 'Revoke folder access and make private',
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const SizedBox(width: 4),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: _showFolderAccessDialog,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.folder_rounded, size: 12, color: AppColors.primary),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: isNarrow ? 90 : 160),
+                                  child: Text(
+                                    '$folderName${fileCount > 0 ? " ($fileCount)" : ""}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: _showFolderAccessDialog,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                    child: Text(
+                                      'Change',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white70 : AppColors.primary.withValues(alpha: 0.8),
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                InkWell(
+                                  onTap: () {
+                                    final currentSpaceName = aiChat.attachedSpaceName ?? 'Folder';
+                                    _deselectAttachedSpace();
+                                    TopAlertBar.showInfo(context, 'Deselected "$currentSpaceName". Folder locked.');
+                                  },
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isDark ? Colors.white12 : Colors.black12,
-                                  ),
+                                  child: const Icon(Icons.close_rounded, size: 13, color: AppColors.primary),
                                 ),
-                                child: Text(
-                                  'Change',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: secondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
+                              ],
                             ),
                           ),
                         ],
                         if (aiChat.attachedFiles.isNotEmpty) ...[
                           for (final af in aiChat.attachedFiles) ...[
                             const SizedBox(width: 4),
-                            Chip(
-                              avatar: const Icon(Icons.insert_drive_file_outlined, size: 13),
-                              label: Text(
-                                af.name,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                              decoration: BoxDecoration(
+                                color: AppColors.accent.withValues(alpha: isDark ? 0.18 : 0.10),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.accent.withValues(alpha: isDark ? 0.35 : 0.25),
+                                ),
                               ),
-                              onDeleted: () => aiChat.removeAttachedFile(af.id),
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              visualDensity: VisualDensity.compact,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.insert_drive_file_outlined, size: 12, color: AppColors.accent),
+                                  const SizedBox(width: 4),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(maxWidth: isNarrow ? 70 : 120),
+                                    child: Text(
+                                      af.name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.accent,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  InkWell(
+                                    onTap: () => aiChat.removeAttachedFile(af.id),
+                                    child: const Icon(Icons.close_rounded, size: 13, color: AppColors.accent),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -2157,20 +2175,20 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   const SizedBox(width: 2),
                   IconButton(
                     tooltip: 'Chat History',
-                    icon: Icon(Icons.history_rounded, size: isNarrow ? 19 : 21),
+                    icon: const Icon(Icons.history_rounded, size: 19),
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                     color: foreground,
                     onPressed: () => _showChatHistorySheet(context),
                   ),
                   const SizedBox(width: 2),
                   IconButton(
                     tooltip: 'New Chat',
-                    icon: Icon(Icons.add_comment_outlined, size: isNarrow ? 18 : 20),
+                    icon: const Icon(Icons.add_rounded, size: 21),
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                     color: foreground,
                     onPressed: isSending
                         ? null
@@ -2188,7 +2206,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-
   Widget _buildComposer(bool isDark, String searchMode, bool isSending) {
     final aiChat = context.watch<AiChatProvider>();
     final isFocused = _focusNode.hasFocus;
@@ -2198,10 +2215,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
-        isNarrow ? 10 : 20,
-        2,
-        isNarrow ? 10 : 20,
-        isNarrow ? 4 : 10,
+        isNarrow ? 12 : 24,
+        0,
+        isNarrow ? 12 : 24,
+        isNarrow ? 8 : 14,
       ),
       decoration: const BoxDecoration(
         color: Colors.transparent,
@@ -2211,300 +2228,252 @@ class _AiChatScreenState extends State<AiChatScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 860),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF1A132F)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(isNarrow ? 16 : 24),
-                border: Border.all(
-                  color: isFocused
-                      ? AppColors.primary
-                      : (isDark
-                          ? Colors.white.withValues(alpha: 0.14)
-                          : AppColors.lightBorder),
-                  width: isFocused ? 1.4 : 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isFocused
-                        ? AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.10)
-                        : Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
-                    blurRadius: isFocused ? 14 : 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              padding: EdgeInsets.fromLTRB(
-                isNarrow ? 12 : 16,
-                isNarrow ? 6 : 10,
-                isNarrow ? 8 : 12,
-                isNarrow ? 6 : 8,
-              ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _focusNode.requestFocus(),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Active Context Chips (Folder, Files, Image)
-                    if (aiChat.hasAttachments || _attachedImageBytes != null) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            // Attached Folder Chip
-                            if (aiChat.attachedSpaceId != null)
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: isDark ? 0.22 : 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.folder_rounded, size: 14, color: AppColors.primary),
-                                    const SizedBox(width: 4),
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(maxWidth: isNarrow ? 120 : 200),
-                                      child: Text(
-                                        '${aiChat.attachedSpaceName}${aiChat.attachedSpaceFileCount > 0 ? " (${aiChat.attachedSpaceFileCount})" : ""}',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    InkWell(
-                                      onTap: () {
-                                        final currentSpaceName = aiChat.attachedSpaceName ?? 'Folder';
-                                        _deselectAttachedSpace();
-                                        TopAlertBar.showInfo(context, 'Deselected "$currentSpaceName". Folder locked.');
-                                      },
-                                      child: const Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                            // Attached Individual Files Chips
-                            ...aiChat.attachedFiles.map((f) => Container(
-                              padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent.withValues(alpha: isDark ? 0.22 : 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: AppColors.accent.withValues(alpha: 0.4),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.description_rounded, size: 14, color: AppColors.accent),
-                                  const SizedBox(width: 4),
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: isNarrow ? 100 : 160),
-                                    child: Text(
-                                      f.name,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.accent,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  InkWell(
-                                    onTap: () => aiChat.removeAttachedFile(f.id),
-                                    child: const Icon(Icons.close_rounded, size: 14, color: AppColors.accent),
-                                  ),
-                                ],
-                              ),
-                            )),
-
-                            // Attached Image Chip
-                            if (_attachedImageBytes != null)
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.teal.withValues(alpha: isDark ? 0.22 : 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.teal.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.image_rounded, size: 14, color: Colors.teal),
-                                    const SizedBox(width: 4),
-                                    const Text(
-                                      'Image',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.teal,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    InkWell(
-                                      onTap: () => setState(() => _attachedImageBytes = null),
-                                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.teal),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    CallbackShortcuts(
-                      bindings: {
-                        const SingleActivator(LogicalKeyboardKey.enter): () {
-                          if (!isSending) _handleSendMessage();
-                        },
-                      },
-                      child: TextField(
-                        focusNode: _focusNode,
-                        controller: _messageController,
-                        maxLines: isNarrow ? 3 : 5,
-                        minLines: 1,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) {
-                          if (!isSending) _handleSendMessage();
-                        },
-                        style: TextStyle(
-                          color: isDark
-                              ? AppColors.darkTextPrimary
-                              : AppColors.lightTextPrimary,
-                          fontSize: isNarrow ? 14 : 15,
-                          height: 1.35,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: isNarrow
-                              ? (searchMode == 'chat' ? 'Ask anything...' : 'Search your notes...')
-                              : (searchMode == 'chat'
-                                  ? 'Ask anything or organize ideas... (Press Enter to send)'
-                                  : 'Search deeply across your notes with citations... (Press Enter to search)'),
-                          hintStyle: TextStyle(
-                            fontSize: isNarrow ? 13.5 : 14.5,
-                            color: isDark ? Colors.white38 : Colors.black38,
-                          ),
-                          filled: false,
-                          fillColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 2,
-                            vertical: isNarrow ? 4 : 4,
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: isNarrow ? 4 : 8),
-                    // Bottom action row — perfectly fitted row without overflow
-                    Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Floating attachment chips above the input capsule
+                if (aiChat.hasAttachments || _attachedImageBytes != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 6),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: IconButton(
-                            icon: Icon(Icons.add_rounded, size: isNarrow ? 20 : 22),
-                            color: isDark ? Colors.white70 : Colors.black54,
-                            tooltip: 'Add files or attachments',
-                            padding: EdgeInsets.zero,
-                            constraints: BoxConstraints(
-                              minWidth: isNarrow ? 30 : 36,
-                              minHeight: isNarrow ? 30 : 36,
-                            ),
-                            onPressed: _showAttachmentMenu,
-                          ),
-                        ),
-                        SizedBox(width: isNarrow ? 4 : 8),
-                        _ModeChip(
-                          label: isNarrow ? '💬 Chat' : '💬 Chat (1 cr)',
-                          selected: searchMode == 'chat',
-                          isDark: isDark,
-                          onTap: () => aiChat.setSearchMode('chat'),
-                          compact: isNarrow,
-                        ),
-                        SizedBox(width: isNarrow ? 4 : 8),
-                        _ModeChip(
-                          label: isNarrow ? '✨ Deep' : '✨ Deep Search (5 cr)',
-                          selected: searchMode == 'deep',
-                          isDark: isDark,
-                          onTap: () => _handleDeepSearchSelection(aiChat),
-                          compact: isNarrow,
-                        ),
-                        const Spacer(),
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: Container(
-                            width: isNarrow ? 32 : 38,
-                            height: isNarrow ? 32 : 38,
+                        if (aiChat.attachedSpaceId != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isSending
-                                    ? [AppColors.error, const Color(0xFFD32F2F)]
-                                    : [AppColors.accent, AppColors.primary],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
+                              color: isDark ? const Color(0xFF2E224D) : const Color(0xFFEDE9FE),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: isDark ? 0.35 : 0.25),
                               ),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (isSending ? AppColors.error : AppColors.primary).withValues(
-                                    alpha: 0.35,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.folder_rounded, size: 12, color: AppColors.primary),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: isNarrow ? 130 : 220),
+                                  child: Text(
+                                    '${aiChat.attachedSpaceName}${aiChat.attachedSpaceFileCount > 0 ? " (${aiChat.attachedSpaceFileCount})" : ""}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primary,
+                                    ),
                                   ),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                                ),
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: () {
+                                    final currentSpaceName = aiChat.attachedSpaceName ?? 'Folder';
+                                    _deselectAttachedSpace();
+                                    TopAlertBar.showInfo(context, 'Deselected "$currentSpaceName". Folder locked.');
+                                  },
+                                  child: const Icon(Icons.close_rounded, size: 13, color: AppColors.primary),
                                 ),
                               ],
                             ),
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              tooltip: isSending ? 'Stop generating' : 'Send message',
-                              icon: isSending
-                                  ? const Icon(
-                                      Icons.stop_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    )
-                                  : const Icon(
-                                      Icons.arrow_upward_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                              onPressed: isSending
-                                  ? () => aiChat.stopGeneration()
-                                  : () => _handleSendMessage(),
+                          ),
+                        ...aiChat.attachedFiles.map((f) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: isDark ? 0.20 : 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.accent.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.description_rounded, size: 12, color: AppColors.accent),
+                              const SizedBox(width: 4),
+                              ConstrainedBox(
+                                constraints: BoxConstraints(maxWidth: isNarrow ? 100 : 160),
+                                child: Text(
+                                  f.name,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.accent,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => aiChat.removeAttachedFile(f.id),
+                                child: const Icon(Icons.close_rounded, size: 13, color: AppColors.accent),
+                              ),
+                            ],
+                          ),
+                        )),
+                        if (_attachedImageBytes != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: isDark ? 0.20 : 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.teal.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.image_rounded, size: 12, color: Colors.teal),
+                                const SizedBox(width: 4),
+                                const Text(
+                                  'Image',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.teal,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: () => setState(() => _attachedImageBytes = null),
+                                  child: const Icon(Icons.close_rounded, size: 13, color: Colors.teal),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // Modern Floating Capsule
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1730) : Colors.white,
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: isFocused
+                          ? AppColors.primary
+                          : (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0)),
+                      width: isFocused ? 1.4 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isFocused
+                            ? AppColors.primary.withValues(alpha: isDark ? 0.18 : 0.08)
+                            : Colors.black.withValues(alpha: isDark ? 0.30 : 0.05),
+                        blurRadius: isFocused ? 16 : 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Plus attachment button
+                      IconButton(
+                        icon: const Icon(Icons.add_rounded, size: 21),
+                        color: isDark ? Colors.white70 : Colors.black54,
+                        tooltip: 'Add files or attachments',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                        onPressed: _showAttachmentMenu,
+                      ),
+                      const SizedBox(width: 2),
+
+                      // Text input field
+                      Expanded(
+                        child: CallbackShortcuts(
+                          bindings: {
+                            const SingleActivator(LogicalKeyboardKey.enter): () {
+                              if (!isSending) _handleSendMessage();
+                            },
+                          },
+                          child: TextField(
+                            focusNode: _focusNode,
+                            controller: _messageController,
+                            maxLines: isNarrow ? 3 : 5,
+                            minLines: 1,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) {
+                              if (!isSending) _handleSendMessage();
+                            },
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                              fontSize: 14.5,
+                              height: 1.3,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: searchMode == 'chat' ? 'Ask anything...' : 'Search across notes...',
+                              hintStyle: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white38 : Colors.black38,
+                              ),
+                              filled: false,
+                              fillColor: Colors.transparent,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Mode switch pill (Chat / Deep)
+                      _ModeTogglePill(
+                        searchMode: searchMode,
+                        isDark: isDark,
+                        isNarrow: isNarrow,
+                        onChatTap: () => aiChat.setSearchMode('chat'),
+                        onDeepTap: () => _handleDeepSearchSelection(aiChat),
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Circular Send Button
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isSending
+                                ? [AppColors.error, const Color(0xFFD32F2F)]
+                                : [AppColors.accent, AppColors.primary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isSending ? AppColors.error : AppColors.primary).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          tooltip: isSending ? 'Stop' : 'Send',
+                          icon: Icon(
+                            isSending ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                            color: Colors.white,
+                            size: 17,
+                          ),
+                          onPressed: isSending ? () => aiChat.stopGeneration() : () => _handleSendMessage(),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -2513,58 +2482,104 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 }
 
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _ModeTogglePill extends StatelessWidget {
+  final String searchMode;
   final bool isDark;
-  final bool compact;
+  final bool isNarrow;
+  final VoidCallback onChatTap;
+  final VoidCallback onDeepTap;
 
-  const _ModeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
+  const _ModeTogglePill({
+    required this.searchMode,
     required this.isDark,
-    this.compact = false,
+    required this.isNarrow,
+    required this.onChatTap,
+    required this.onDeepTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 8 : 12,
-            vertical: compact ? 5 : 6,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors.accent.withValues(alpha: isDark ? 0.20 : 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(compact ? 12 : 14),
-            border: Border.all(
-              color: selected
-                  ? AppColors.accent.withValues(alpha: isDark ? 0.55 : 0.40)
-                  : (isDark
-                      ? Colors.white.withValues(alpha: 0.12)
-                      : Colors.black.withValues(alpha: 0.10)),
-              width: 1,
+    final isChat = searchMode == 'chat';
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Chat mode button
+          InkWell(
+            onTap: onChatTap,
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: EdgeInsets.symmetric(horizontal: isNarrow ? 6 : 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: isChat
+                    ? (isDark ? const Color(0xFF2D204A) : Colors.white)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: isChat
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                'Chat',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isChat ? FontWeight.w700 : FontWeight.w500,
+                  color: isChat
+                      ? AppColors.primary
+                      : (isDark ? Colors.white54 : Colors.black45),
+                ),
+              ),
             ),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: compact ? 11 : 12,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected
-                  ? AppColors.accent
-                  : (isDark ? Colors.white70 : Colors.black54),
+
+          // Deep mode button
+          InkWell(
+            onTap: onDeepTap,
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: EdgeInsets.symmetric(horizontal: isNarrow ? 6 : 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: !isChat
+                    ? (isDark ? const Color(0xFF2D204A) : Colors.white)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: !isChat
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                'Deep',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: !isChat ? FontWeight.w700 : FontWeight.w500,
+                  color: !isChat
+                      ? AppColors.accent
+                      : (isDark ? Colors.white54 : Colors.black45),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
